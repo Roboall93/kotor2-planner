@@ -1,0 +1,5 @@
+node_modules/
+dist/
+# Raw game extraction stays local; only the trimmed rules JSON is committed.
+raw/
+__pycache__/
