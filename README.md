@@ -2,6 +2,11 @@
 
 Plan a Jedi Exile build level by level: attributes, feats, Force powers, skills and prestige class, with share links.
 
+**Live site:** https://roboall93.github.io/kotor2-planner/ (deployed by `.github/workflows/pages.yml` on every push to `main`).
+
+Fan-made and non-commercial; not affiliated with Lucasfilm, Disney, Obsidian or Aspyr. Feat and Force power icons
+and descriptions come from the game and remain © Lucasfilm Ltd.
+
 ## Layout
 
 - `tools/extract_2da.py` reads `chitin.key` / `2DA.bif` / `dialog.tlk` from a KOTOR2 install into `raw/` (gitignored).

@@ -3,3 +3,6 @@ dist/
 # Raw game extraction stays local; only the trimmed rules JSON is committed.
 raw/
 __pycache__/
+
+# Local tooling
+.claude/
