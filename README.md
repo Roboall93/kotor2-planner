@@ -33,7 +33,7 @@ bonus (acbonus.2da rows start at level 0), and Force power costs by alignment an
 
 Still unverified:
 - Base attack bonus: classes.2da gives every class the full table
-- Prestige classes: level 15 and alignment 75+/25- per StrategyWiki. The planner lets any base class take any
+- Prestige classes: must already be level 15 (so the first prestige level is 16) and alignment 75+/25- per StrategyWiki. The planner lets any base class take any
   prestige class; StrategyWiki pairs each base class with two
 - Whether unspent skill points carry over to the next level (the planner assumes not)
 - Whether WIS increases apply to Force points retroactively

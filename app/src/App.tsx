@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL,
+  ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL, PRESTIGE_REQUIRED_LEVEL,
   classById, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
   placePicks, placeSkills, pointCost, repeatSkillGains, powerById, powerCost, prestigeAlignmentOk, reflowSkills, rules, setStagePicks, simulate,
   stageGains, stageLevels, stagePicks, stagesOf,
@@ -143,7 +143,7 @@ export default function App() {
             </select>
             {build.prestige && (
               <label className="inline">
-                Taken at level
+                First prestige level
                 <input
                   type="number" min={PRESTIGE_MIN_LEVEL} max={build.levels.length} value={build.prestigeAt}
                   onChange={(e) => update((b) => {
@@ -155,7 +155,7 @@ export default function App() {
             <p className="note">
               {build.levels.length < PRESTIGE_MIN_LEVEL
                 ? `Plan to level ${PRESTIGE_MIN_LEVEL}+ to unlock.`
-                : `Available from level ${PRESTIGE_MIN_LEVEL} with alignment 75+ (light) or 25 or below (dark).`}
+                : `You must reach level ${PRESTIGE_REQUIRED_LEVEL} first, so the earliest prestige level is ${PRESTIGE_MIN_LEVEL}. Needs alignment 75+ (light) or 25 or below (dark).`}
             </p>
             {build.prestige && !prestigeAlignmentOk(classById[build.prestige], build.alignment) && (
               <p className="note warn-text">

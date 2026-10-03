@@ -72,7 +72,10 @@ export const ATTR_NAMES: Record<Attr, string> = {
 //   skill ranks never exceed level + 3 (cross-class: half); unspent points are not banked
 export const POINT_BUY = 30
 export const MAX_LEVEL = 50
-export const PRESTIGE_MIN_LEVEL = 15
+// You must already be level 15 to choose a prestige class, so its first level is
+// your 16th level-up at the earliest.
+export const PRESTIGE_REQUIRED_LEVEL = 15
+export const PRESTIGE_MIN_LEVEL = PRESTIGE_REQUIRED_LEVEL + 1
 const WAR_VETERAN_HP = 25
 const FORCE_SENSITIVE_FP = 40
 const FORCE_SENSITIVE_LEVEL = 2
@@ -346,7 +349,7 @@ export function decodeBuild(s: string): Build | null {
     const d = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))))
     if (d[0] !== 1 || !classById[d[2]]) return null
     return {
-      name: d[1], base: d[2], prestige: d[3] || null, prestigeAt: d[4], alignment: d[5],
+      name: d[1], base: d[2], prestige: d[3] || null, prestigeAt: Math.max(PRESTIGE_MIN_LEVEL, d[4]), alignment: d[5],
       attrs: Object.fromEntries(ATTRS.map((a, i) => [a, d[6][i]])) as Record<Attr, number>,
       levels: d[7].map((l: [number[], number[], number[], number]) => ({
         feats: l[0], powers: l[1], skills: l[2], attr: l[3] >= 0 ? ATTRS[l[3]] : undefined,
