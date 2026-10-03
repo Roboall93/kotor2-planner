@@ -335,27 +335,48 @@ export const prestigeAlignmentOk = (cls: ClassDef, alignment: number) =>
   cls.side === 'light' ? alignment >= 75 : cls.side === 'dark' ? alignment <= 25 : true
 
 // --- Share links ---------------------------------------------------------
-// Compact positional encoding so links stay short enough for forum posts.
+// Version 2 is sparse: only levels with choices are stored, and skills as
+// [skill, points] pairs, so an unfinished plan isn't hundreds of zeros long.
+// Version 1 links (every level, every skill) still decode.
+type SparseLevel = [number, number[], number[], number[], number] // level index, feats, powers, skill pairs, attr
+
+const toBase64Url = (text: string) =>
+  btoa(String.fromCharCode(...new TextEncoder().encode(text))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const fromBase64Url = (s: string) =>
+  new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)))
+
 export function encodeBuild(b: Build): string {
-  const data = [
-    1, b.name, b.base, b.prestige ?? '', b.prestigeAt, b.alignment, ATTRS.map((a) => b.attrs[a]),
-    b.levels.map((l) => [l.feats, l.powers, l.skills, l.attr ? ATTRS.indexOf(l.attr) : -1]),
-  ]
-  const bytes = new TextEncoder().encode(JSON.stringify(data))
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const levels: SparseLevel[] = []
+  b.levels.forEach((l, i) => {
+    const skills = l.skills.flatMap((pts, s) => (pts ? [s, pts] : []))
+    const attr = l.attr ? ATTRS.indexOf(l.attr) : -1
+    if (l.feats.length || l.powers.length || skills.length || attr >= 0) levels.push([i, l.feats, l.powers, skills, attr])
+  })
+  const data = [2, b.name, b.base, b.prestige ?? '', b.prestigeAt, b.alignment, ATTRS.map((a) => b.attrs[a]), b.levels.length, levels]
+  return toBase64Url(JSON.stringify(data))
 }
 
 export function decodeBuild(s: string): Build | null {
   try {
-    const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/'))
-    const d = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))))
-    if (d[0] !== 1 || !classById[d[2]]) return null
+    const d = JSON.parse(fromBase64Url(s))
+    if (!classById[d[2]] || (d[0] !== 1 && d[0] !== 2)) return null
+    let levels: LevelChoice[]
+    if (d[0] === 1) {
+      levels = d[7].map((l: [number[], number[], number[], number]) => ({
+        feats: l[0], powers: l[1], skills: l[2], attr: l[3] >= 0 ? ATTRS[l[3]] : undefined,
+      }))
+    } else {
+      levels = Array.from({ length: Math.min(MAX_LEVEL, d[7]) }, emptyLevel)
+      for (const [i, feats, powers, pairs, attr] of d[8] as SparseLevel[]) {
+        if (!levels[i]) continue
+        for (let k = 0; k < pairs.length; k += 2) levels[i].skills[pairs[k]] = pairs[k + 1]
+        Object.assign(levels[i], { feats, powers, attr: attr >= 0 ? ATTRS[attr] : undefined })
+      }
+    }
     return {
       name: d[1], base: d[2], prestige: d[3] || null, prestigeAt: Math.max(PRESTIGE_MIN_LEVEL, d[4]), alignment: d[5],
       attrs: Object.fromEntries(ATTRS.map((a, i) => [a, d[6][i]])) as Record<Attr, number>,
-      levels: d[7].map((l: [number[], number[], number[], number]) => ({
-        feats: l[0], powers: l[1], skills: l[2], attr: l[3] >= 0 ? ATTRS[l[3]] : undefined,
-      })),
+      levels,
     }
   } catch {
     return null

@@ -47,9 +47,24 @@ export default function App() {
   const stages = useMemo(() => stagesOf(build), [build])
   const code = useMemo(() => encodeBuild(build), [build])
 
+  // Keep the address bar in step with the build: copying the URL always shares
+  // the current plan, and a refresh keeps your edits instead of reloading the
+  // link you first opened. replaceState doesn't add history entries.
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, code) } catch { /* ignore */ }
+    if (location.hash !== `#b=${code}`) history.replaceState(null, '', `#b=${code}`)
   }, [code])
+
+  // A share link pasted into a tab that already has the planner open only
+  // changes the hash, which doesn't reload the page; load it here.
+  useEffect(() => {
+    const onHash = () => {
+      const next = location.hash.startsWith('#b=') ? decodeBuild(location.hash.slice(3)) : null
+      if (next) { setBuild(next); setOpenStage(0) }
+    }
+    addEventListener('hashchange', onHash)
+    return () => removeEventListener('hashchange', onHash)
+  }, [])
 
   // reflow: the change can move skill budgets or caps (INT, class, prestige, level count),
   // so re-spread every stage's skill plan to keep it legal.
@@ -70,7 +85,6 @@ export default function App() {
 
   const share = async () => {
     const url = `${location.origin}${location.pathname}#b=${code}`
-    history.replaceState(null, '', url)
     try {
       await navigator.clipboard.writeText(url)
       setCopied(true)
