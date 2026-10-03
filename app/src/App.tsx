@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_MIN_LEVEL,
-  classById, decodeBuild, emptyLevel, encodeBuild, featBlocked, featById, isClassSkill, mod, newBuild,
-  pointCost, powerBlocked, powerById, powerCost, prestigeOptions, rankCap, rules, simulate,
-  type Attr, type Build, type LevelChoice, type LevelState,
+  ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL,
+  classById, decodeBuild, emptyLevel, encodeBuild, featById, isClassSkill, mod, newBuild,
+  placePicks, placeSkills, pointCost, powerById, powerCost, reflowSkills, rules, setStagePicks, simulate,
+  stageGains, stageLevels, stagePicks, stagesOf,
+  type Attr, type Build, type LevelState, type PickKind, type Stage,
 } from './engine'
 import './App.css'
 
@@ -21,29 +22,38 @@ function loadInitial(): Build {
 }
 
 const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`)
+const range = (st: Stage) => (st.start === st.end ? `Level ${st.start}` : `Levels ${st.start}–${st.end}`)
+
+type Updater = (fn: (b: Build) => void, opts?: { reflow?: boolean }) => void
 
 export default function App() {
   const [build, setBuild] = useState<Build>(loadInitial)
-  const [open, setOpen] = useState<number | null>(0)
-  const [viewLevel, setViewLevel] = useState<number | null>(null)
+  const [openStage, setOpenStage] = useState(0)
   const [copied, setCopied] = useState(false)
   const states = useMemo(() => simulate(build), [build])
+  const stages = useMemo(() => stagesOf(build), [build])
   const code = useMemo(() => encodeBuild(build), [build])
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, code) } catch { /* ignore */ }
   }, [code])
 
-  const update = (fn: (b: Build) => void) =>
+  // reflow: the change can move skill budgets or caps (INT, class, prestige, level count),
+  // so re-spread every stage's skill plan to keep it legal.
+  const update: Updater = (fn, opts) =>
     setBuild((prev) => {
       const next = structuredClone(prev)
       fn(next)
+      if (opts?.reflow) reflowSkills(prev, next)
       return next
     })
 
+  const stageIdx = Math.min(openStage, stages.length - 1)
+  const stage = stages[stageIdx]
   const spent = ATTRS.reduce((t, a) => t + pointCost(build.attrs[a]), 0)
-  const shown = states[Math.min(viewLevel ?? states.length - 1, states.length - 1)]
   const totalIssues = states.reduce((t, s) => t + s.issues.length, 0)
+  const totalOpen = states.reduce((t, s) => t + s.openPicks + (s.level % 4 === 0 && !build.levels[s.level - 1].attr ? 1 : 0), 0)
+  const openLevel = (level: number) => setOpenStage(stages.findIndex((st) => level >= st.start && level <= st.end))
 
   const share = async () => {
     const url = `${location.origin}${location.pathname}#b=${code}`
@@ -61,7 +71,7 @@ export default function App() {
       b.levels.length = n
       if (n < PRESTIGE_MIN_LEVEL) b.prestige = null
       b.prestigeAt = Math.min(b.prestigeAt, Math.max(PRESTIGE_MIN_LEVEL, n))
-    })
+    }, { reflow: true })
 
   return (
     <div className="app">
@@ -78,7 +88,7 @@ export default function App() {
             onChange={(e) => update((b) => { b.name = e.target.value })}
           />
           <button className="primary" onClick={share}>{copied ? 'Link copied' : 'Copy share link'}</button>
-          <button onClick={() => { if (confirm('Start a new build? The current one will be replaced.')) { setBuild(newBuild()); setOpen(0) } }}>New</button>
+          <button onClick={() => { if (confirm('Start a new build? The current one will be replaced.')) { setBuild(newBuild()); setOpenStage(0) } }}>New</button>
         </div>
       </header>
 
@@ -91,7 +101,7 @@ export default function App() {
                 <button
                   key={c.id}
                   className={build.base === c.id ? 'on' : ''}
-                  onClick={() => update((b) => { b.base = c.id; b.prestige = null })}
+                  onClick={() => update((b) => { b.base = c.id }, { reflow: true })}
                 >{c.name.replace('Jedi ', '')}</button>
               ))}
             </div>
@@ -106,12 +116,12 @@ export default function App() {
             {ATTRS.map((a) => (
               <div className="attr" key={a}>
                 <span className="attr-name">{ATTR_NAMES[a]}</span>
-                <button aria-label={`Lower ${ATTR_NAMES[a]}`} disabled={build.attrs[a] <= 8} onClick={() => update((b) => { b.attrs[a]-- })}>−</button>
+                <button aria-label={`Lower ${ATTR_NAMES[a]}`} disabled={build.attrs[a] <= 8} onClick={() => update((b) => { b.attrs[a]-- }, { reflow: true })}>−</button>
                 <span className="attr-val">{build.attrs[a]}</span>
                 <button
                   aria-label={`Raise ${ATTR_NAMES[a]}`}
                   disabled={build.attrs[a] >= 18 || spent - pointCost(build.attrs[a]) + pointCost(build.attrs[a] + 1) > POINT_BUY}
-                  onClick={() => update((b) => { b.attrs[a]++ })}
+                  onClick={() => update((b) => { b.attrs[a]++ }, { reflow: true })}
                 >+</button>
                 <span className="mod">{signed(mod(build.attrs[a]))}</span>
               </div>
@@ -124,10 +134,10 @@ export default function App() {
             <select
               value={build.prestige ?? ''}
               disabled={build.levels.length < PRESTIGE_MIN_LEVEL}
-              onChange={(e) => update((b) => { b.prestige = e.target.value || null })}
+              onChange={(e) => update((b) => { b.prestige = e.target.value || null }, { reflow: true })}
             >
               <option value="">None</option>
-              {prestigeOptions(build.base).map((c) => (
+              {PRESTIGE_CLASSES.map((c) => (
                 <option key={c.id} value={c.id}>{c.name} ({c.side} side)</option>
               ))}
             </select>
@@ -138,7 +148,7 @@ export default function App() {
                   type="number" min={PRESTIGE_MIN_LEVEL} max={build.levels.length} value={build.prestigeAt}
                   onChange={(e) => update((b) => {
                     b.prestigeAt = Math.max(PRESTIGE_MIN_LEVEL, Math.min(b.levels.length, +e.target.value || PRESTIGE_MIN_LEVEL))
-                  })}
+                  }, { reflow: true })}
                 />
               </label>
             )}
@@ -171,25 +181,25 @@ export default function App() {
         <section className="col timeline">
           <h2 className="col-title">
             Level-up plan
-            <span className={`pill ${totalIssues ? 'warn' : 'ok'}`}>{totalIssues ? `${totalIssues} to resolve` : 'All valid'}</span>
+            <span className="pills">
+              {totalOpen > 0 && <span className="pill">{totalOpen} picks left</span>}
+              <span className={`pill ${totalIssues ? 'warn' : 'ok'}`}>{totalIssues ? `${totalIssues} rule ${totalIssues === 1 ? 'error' : 'errors'}` : 'No rule errors'}</span>
+            </span>
           </h2>
-          {states.map((s, i) => (
-            <LevelRow
-              key={i}
-              state={s}
-              prev={states[i - 1]}
-              choice={build.levels[i]}
-              prevChoice={build.levels[i - 1]}
-              build={build}
-              open={open === i}
-              onToggle={() => { setOpen(open === i ? null : i); setViewLevel(i) }}
-              onChange={(fn) => update((b) => fn(b.levels[i]))}
-            />
-          ))}
+
+          <LevelStrip states={states} stage={stage} onPick={openLevel} />
+
+          {stages.map((st, i) =>
+            i === stageIdx ? (
+              <StageCard key={st.start} stage={st} build={build} states={states} update={update} />
+            ) : (
+              <StageRow key={st.start} stage={st} build={build} states={states} onOpen={() => setOpenStage(i)} />
+            ),
+          )}
         </section>
 
         <section className="col summary">
-          <Summary state={shown} build={build} onLevel={(l) => setViewLevel(l - 1)} max={states.length} />
+          <Summary state={states[stage.end - 1]} build={build} />
         </section>
       </main>
 
@@ -200,161 +210,160 @@ export default function App() {
   )
 }
 
-function LevelRow({ state: s, prev, choice, prevChoice, build, open, onToggle, onChange }: {
-  state: LevelState
-  prev?: LevelState
-  choice: LevelChoice
-  prevChoice?: LevelChoice
-  build: Build
-  open: boolean
-  onToggle: () => void
-  onChange: (fn: (l: LevelChoice) => void) => void
-}) {
-  const ownedBefore = new Set([...(prev?.ownedFeats ?? [206]), ...s.granted])
-  const powersBefore = prev?.ownedPowers ?? new Set<number>()
-  const featOptions = rules.feats.filter(
-    (f) => !ownedBefore.has(f.id) && !choice.feats.includes(f.id) && !featBlocked(f.id, s.cls, s.level, ownedBefore),
+function LevelStrip({ states, stage, onPick }: { states: LevelState[]; stage: Stage; onPick: (level: number) => void }) {
+  return (
+    <div className="strip" role="list" aria-label="Levels">
+      {states.map((s) => {
+        const inStage = s.level >= stage.start && s.level <= stage.end
+        return (
+          <button
+            key={s.level}
+            role="listitem"
+            className={`tick ${s.cls.prestige ? 'prestige' : ''} ${inStage ? 'current' : ''} ${s.issues.length ? 'issue' : ''} ${s.openPicks ? 'open-picks' : ''}`}
+            title={`Level ${s.level} · ${s.cls.name} ${s.classLevel}${s.issues.length ? `\n${s.issues.join('\n')}` : ''}`}
+            onClick={() => onPick(s.level)}
+          >
+            <span>{s.level % 4 === 0 || s.level === 1 ? s.level : ''}</span>
+          </button>
+        )
+      })}
+    </div>
   )
-  const powerOptions = rules.powers.filter(
-    (p) => !powersBefore.has(p.id) && !choice.powers.includes(p.id) && !powerBlocked(p.id, s.cls, s.level, powersBefore),
+}
+
+function stageIssues(states: LevelState[], st: Stage) {
+  return stageLevels(st).flatMap((l) => states[l - 1].issues.map((t) => ({ level: l, text: t })))
+}
+
+function classSpan(states: LevelState[], st: Stage) {
+  const a = states[st.start - 1]
+  const b = states[st.end - 1]
+  return a.classLevel === b.classLevel ? `${a.cls.name} ${a.classLevel}` : `${a.cls.name} ${a.classLevel}–${b.classLevel}`
+}
+
+function StageRow({ stage: st, build, states, onOpen }: { stage: Stage; build: Build; states: LevelState[]; onOpen: () => void }) {
+  const issues = stageIssues(states, st)
+  const attr = build.levels[st.start - 1].attr
+  return (
+    <button className={`stage-row ${issues.length ? 'has-issues' : ''}`} onClick={onOpen}>
+      <span className="range">{range(st)}</span>
+      <span className="lv-class">{classSpan(states, st)}</span>
+      <span className="lv-picks">
+        {attr && <span className="chip attr">+1 {attr.toUpperCase()}</span>}
+        {stagePicks(build, 'feats', st).map(({ id }) => <span key={`f${id}`} className="chip feat">{featById.get(id)?.name}</span>)}
+        {stagePicks(build, 'powers', st).map(({ id }) => <span key={`p${id}`} className="chip power">{powerById.get(id)?.name}</span>)}
+      </span>
+      {issues.length > 0 && <span className="dot">{issues.length}</span>}
+    </button>
   )
-  const prestigeStart = build.prestige && s.level === build.prestigeAt
+}
+
+function StageCard({ stage: st, build, states, update }: { stage: Stage; build: Build; states: LevelState[]; update: Updater }) {
+  const [detail, setDetail] = useState(false)
+  const levels = stageLevels(st)
+  const first = states[st.start - 1]
+  const issues = stageIssues(states, st)
+  const attrLevel = st.start % 4 === 0 ? st.start : null
 
   return (
-    <div className={`level ${open ? 'open' : ''} ${s.issues.length ? 'has-issues' : ''}`}>
-      <button className="level-head" onClick={onToggle} aria-expanded={open}>
-        <span className="lv">{s.level}</span>
-        <span className="lv-class">
-          {s.cls.name} {s.classLevel}
-          {prestigeStart && <span className="pill gold">Prestige</span>}
-        </span>
-        <span className="lv-picks">
-          {choice.feats.map((f) => <span key={f} className="chip feat">{featById.get(f)?.name}</span>)}
-          {choice.powers.map((p) => <span key={p} className="chip power">{powerById.get(p)?.name}</span>)}
-          {choice.attr && <span className="chip attr">+1 {choice.attr.toUpperCase()}</span>}
-        </span>
-        {s.issues.length > 0 && <span className="dot" title={s.issues.join('\n')}>{s.issues.length}</span>}
-      </button>
+    <div className="stage open">
+      <div className="stage-head">
+        <div>
+          <h3>{range(st)}</h3>
+          <span className="lv-class">{classSpan(states, st)}</span>
+          {build.prestige && st.start === build.prestigeAt && <span className="pill gold">Prestige begins</span>}
+        </div>
+        <button className="link" onClick={() => setDetail(!detail)}>{detail ? 'Hide' : 'Show'} level by level</button>
+      </div>
 
-      {open && (
-        <div className="level-body">
-          {s.granted.length > 0 && (
-            <p className="granted">Granted automatically: {s.granted.map((f) => featById.get(f)?.name).join(', ')}</p>
-          )}
+      {first.granted.length + levels.slice(1).reduce((t, l) => t + states[l - 1].granted.length, 0) > 0 && (
+        <p className="granted">
+          Granted automatically:{' '}
+          {levels.flatMap((l) => states[l - 1].granted.map((f) => `${featById.get(f)?.name} (${l})`)).join(', ')}
+        </p>
+      )}
 
-          {s.level % 4 === 0 && (
-            <div className="field">
-              <label>Attribute increase</label>
-              <div className="seg small">
-                {ATTRS.map((a) => (
-                  <button key={a} className={choice.attr === a ? 'on' : ''} onClick={() => onChange((l) => { l.attr = a as Attr })}>
-                    {a.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <Picker
-            label={`Feats (${choice.feats.length}/${s.featPicks})`}
-            chosen={choice.feats}
-            nameOf={(id) => featById.get(id)?.name ?? `#${id}`}
-            descOf={(id) => featById.get(id)?.description ?? ''}
-            options={featOptions.map((f) => ({ id: f.id, name: f.name }))}
-            full={choice.feats.length >= s.featPicks}
-            onAdd={(id) => onChange((l) => { l.feats.push(id) })}
-            onRemove={(id) => onChange((l) => { l.feats = l.feats.filter((x) => x !== id) })}
-          />
-
-          <Picker
-            label={`Force powers (${choice.powers.length}/${s.powerPicks})`}
-            chosen={choice.powers}
-            nameOf={(id) => powerById.get(id)?.name ?? `#${id}`}
-            descOf={(id) => {
-              const p = powerById.get(id)
-              return p ? `${p.side} · ${powerCost(p, build.alignment)} FP\n\n${p.description}` : ''
-            }}
-            options={powerOptions.map((p) => ({ id: p.id, name: `${p.name} (${p.side[0].toUpperCase()}, ${powerCost(p, build.alignment)} FP)` }))}
-            full={choice.powers.length >= s.powerPicks}
-            onAdd={(id) => onChange((l) => { l.powers.push(id) })}
-            onRemove={(id) => onChange((l) => { l.powers = l.powers.filter((x) => x !== id) })}
-          />
-          {s.level === 1 && <p className="note">The Exile starts cut off from the Force, so level 1 has no power picks.</p>}
-
-          <div className="field">
-            <label>Skills ({s.skillPointsSpent}/{s.skillPoints} points)</label>
-            <div className="skills">
-              {rules.skills.map((sk) => {
-                const cls = isClassSkill(s.cls, sk.id)
-                const cost = cls ? 1 : 2
-                const gained = s.ranks[sk.id] - (prev?.ranks[sk.id] ?? 0)
-                const canAdd = s.skillPointsSpent + cost <= s.skillPoints && s.ranks[sk.id] < rankCap(s.cls, sk.id, s.level)
-                return (
-                  <div className="skill" key={sk.id} title={sk.description}>
-                    <span className={cls ? '' : 'cross'}>{sk.name}{!cls && <small> cross-class</small>}</span>
-                    <button aria-label={`Lower ${sk.name}`} disabled={!choice.skills[sk.id]} onClick={() => onChange((l) => { l.skills[sk.id] -= cost })}>−</button>
-                    <span className="rank">{s.ranks[sk.id]}</span>
-                    <button aria-label={`Raise ${sk.name}`} disabled={!canAdd} onClick={() => onChange((l) => { l.skills[sk.id] += cost })}>+</button>
-                    <span className="mod">{gained > 0 ? `+${gained}` : ''}</span>
-                  </div>
-                )
-              })}
-            </div>
-            {prevChoice && (
+      {attrLevel && (
+        <div className="field">
+          <label>Attribute increase at level {attrLevel}</label>
+          <div className="seg small">
+            {ATTRS.map((a) => (
               <button
-                className="link"
-                onClick={() => onChange((l) => {
-                  let budget = s.skillPoints
-                  l.skills = prevChoice.skills.map((pts) => {
-                    const take = Math.min(pts, budget)
-                    budget -= take
-                    return take
-                  })
-                })}
-              >Repeat previous level's skills</button>
-            )}
+                key={a}
+                className={build.levels[attrLevel - 1].attr === a ? 'on' : ''}
+                onClick={() => update((b) => { b.levels[attrLevel - 1].attr = a as Attr }, { reflow: true })}
+              >{a.toUpperCase()} <small>{states[attrLevel - 1].attrs[a] - (build.levels[attrLevel - 1].attr === a ? 1 : 0)}</small></button>
+            ))}
           </div>
-
-          {s.issues.length > 0 && (
-            <ul className="issues">{s.issues.map((t, k) => <li key={k}>{t}</li>)}</ul>
+          {build.levels[attrLevel - 1].attr === 'int' && (
+            <p className="note">Raises skill points from level {attrLevel} on, not before.</p>
           )}
         </div>
+      )}
+
+      <StagePicks kind="feats" stage={st} build={build} states={states} update={update} />
+      <StagePicks kind="powers" stage={st} build={build} states={states} update={update} />
+      {st.start === 1 && <p className="note">The Exile starts cut off from the Force, so level 1 has no power picks.</p>}
+      <StageSkills stage={st} build={build} states={states} update={update} />
+
+      {detail && <LevelDetail stage={st} build={build} states={states} />}
+
+      {issues.length > 0 && (
+        <ul className="issues">{issues.map((t, k) => <li key={k}><b>Lv {t.level}</b> {t.text}</li>)}</ul>
       )}
     </div>
   )
 }
 
-function Picker({ label, chosen, nameOf, descOf, options, full, onAdd, onRemove }: {
-  label: string
-  chosen: number[]
-  nameOf: (id: number) => string
-  descOf: (id: number) => string
-  options: { id: number; name: string }[]
-  full: boolean
-  onAdd: (id: number) => void
-  onRemove: (id: number) => void
+function StagePicks({ kind, stage: st, build, states, update }: {
+  kind: PickKind; stage: Stage; build: Build; states: LevelState[]; update: Updater
 }) {
+  const isFeat = kind === 'feats'
+  const chosen = stagePicks(build, kind, st)
+  const ids = chosen.map((c) => c.id)
+  const slots = stageLevels(st).reduce((t, l) => t + (isFeat ? states[l - 1].featPicks : states[l - 1].powerPicks), 0)
+  if (slots === 0 && chosen.length === 0) return null
+
+  // Anything picked anywhere in the build is excluded, so a later stage's pick
+  // can't be taken again here.
+  const pickedAnywhere = new Set(build.levels.flatMap((l) => l[kind]))
+  const before = states[st.start - 2]
+  const ownedBefore = isFeat ? before?.ownedFeats : before?.ownedPowers
+  const all = isFeat ? rules.feats : rules.powers
+  const options = chosen.length >= slots ? [] : all.filter((x) =>
+    !pickedAnywhere.has(x.id) && !ownedBefore?.has(x.id) &&
+    placePicks(kind, [...ids, x.id], st, states).unplaced.length === 0)
+
+  const label = (id: number) => {
+    if (isFeat) return featById.get(id)?.name ?? `#${id}`
+    const p = powerById.get(id)
+    return p ? `${p.name} (${p.side === 'universal' ? 'U' : p.side[0].toUpperCase()}, ${powerCost(p, build.alignment)} FP)` : `#${id}`
+  }
+  const desc = (id: number) => (isFeat ? featById.get(id)?.description : powerById.get(id)?.description) ?? ''
+  const set = (next: number[]) => update((b) => setStagePicks(b, kind, next, st))
+
   return (
     <div className="field">
-      <label>{label}</label>
+      <label>{isFeat ? 'Feats' : 'Force powers'} <span className="count">{chosen.length} of {slots}</span></label>
       {chosen.length > 0 && (
         <div className="chosen">
-          {chosen.map((id) => (
-            <div key={id} className="pick">
-              <div className="pick-head">
-                <b>{nameOf(id)}</b>
-                <button aria-label={`Remove ${nameOf(id)}`} onClick={() => onRemove(id)}>×</button>
-              </div>
-              <p>{descOf(id)}</p>
-            </div>
+          {chosen.map(({ id, level }) => (
+            <details key={id} className="pick">
+              <summary>
+                <span className="lvl-tag">Lv {level}</span>
+                <b>{label(id)}</b>
+                <button aria-label={`Remove ${label(id)}`} onClick={(e) => { e.preventDefault(); set(ids.filter((x) => x !== id)) }}>×</button>
+              </summary>
+              <p>{desc(id)}</p>
+            </details>
           ))}
         </div>
       )}
-      {!full && (
-        <select value="" onChange={(e) => e.target.value && onAdd(+e.target.value)}>
-          <option value="">{options.length ? 'Add…' : 'Nothing eligible'}</option>
+      {chosen.length < slots && (
+        <select value="" onChange={(e) => e.target.value && set([...ids, +e.target.value])}>
+          <option value="">{options.length ? `Add ${isFeat ? 'a feat' : 'a power'}…` : 'Nothing eligible in these levels'}</option>
           {[...options].sort((a, b) => a.name.localeCompare(b.name)).map((o) => (
-            <option key={o.id} value={o.id}>{o.name}</option>
+            <option key={o.id} value={o.id}>{label(o.id)}</option>
           ))}
         </select>
       )}
@@ -362,18 +371,75 @@ function Picker({ label, chosen, nameOf, descOf, options, full, onAdd, onRemove 
   )
 }
 
-function Summary({ state: s, build, onLevel, max }: { state: LevelState; build: Build; onLevel: (l: number) => void; max: number }) {
+function StageSkills({ stage: st, build, states, update }: { stage: Stage; build: Build; states: LevelState[]; update: Updater }) {
+  const gains = stageGains(build, states, st)
+  const budget = stageLevels(st).reduce((t, l) => t + states[l - 1].skillPoints, 0)
+  const spentPts = stageLevels(st).reduce((t, l) => t + states[l - 1].skillPointsSpent, 0)
+  const last = states[st.end - 1]
+  const tryGains = (next: number[]) => placeSkills(next, st, states)
+  const apply = (next: number[]) => {
+    const placed = tryGains(next)
+    if (placed.ok) update((b) => stageLevels(st).forEach((l, i) => { b.levels[l - 1].skills = placed.perLevel[i] }))
+  }
+
+  return (
+    <div className="field">
+      <label>Skills <span className="count">{spentPts} of {budget} points</span></label>
+      <div className="skills">
+        {rules.skills.map((sk) => {
+          const cls = isClassSkill(last.cls, sk.id)
+          const plus = gains.map((g, s) => (s === sk.id ? g + 1 : g))
+          const minus = gains.map((g, s) => (s === sk.id ? g - 1 : g))
+          return (
+            <div className="skill" key={sk.id} title={sk.description}>
+              <span className={cls ? '' : 'cross'}>{sk.name}{!cls && <small> cross-class</small>}</span>
+              <button aria-label={`Lower ${sk.name}`} disabled={gains[sk.id] <= 0} onClick={() => apply(minus)}>−</button>
+              <span className="rank">{last.ranks[sk.id]}</span>
+              <button aria-label={`Raise ${sk.name}`} disabled={!tryGains(plus).ok} onClick={() => apply(plus)}>+</button>
+              <span className="mod">{gains[sk.id] > 0 ? `+${gains[sk.id]}` : ''}</span>
+            </div>
+          )
+        })}
+      </div>
+      <p className="note">
+        Ranks shown are at level {st.end}. Points are spent level by level, capped at level + 3
+        ({Math.floor((st.end + 3) / 2)} for cross-class at level {st.end}).
+      </p>
+    </div>
+  )
+}
+
+function LevelDetail({ stage: st, build, states }: { stage: Stage; build: Build; states: LevelState[] }) {
+  return (
+    <table className="detail">
+      <thead><tr><th>Lv</th><th>Class</th><th>Feats</th><th>Powers</th><th>Skills</th></tr></thead>
+      <tbody>
+        {stageLevels(st).map((l) => {
+          const s = states[l - 1]
+          const c = build.levels[l - 1]
+          const skills = c.skills.flatMap((pts, k) => (pts ? [`${rules.skills[k].name} ${pts}`] : []))
+          const left = s.skillPoints - s.skillPointsSpent
+          return (
+            <tr key={l} className={s.issues.length ? 'bad' : ''}>
+              <td>{l}</td>
+              <td>{s.cls.name} {s.classLevel}{c.attr && <> · +1 {c.attr.toUpperCase()}</>}</td>
+              <td>{c.feats.map((f) => featById.get(f)?.name).join(', ') || (s.featPicks ? '—' : '')}</td>
+              <td>{c.powers.map((p) => powerById.get(p)?.name).join(', ') || (s.powerPicks ? '—' : '')}</td>
+              <td>{skills.join(', ')}{left > 0 && <span className="muted"> ({left} unspent)</span>}</td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
+function Summary({ state: s, build }: { state: LevelState; build: Build }) {
   const feats = [...s.ownedFeats].flatMap((id) => featById.get(id) ?? [])
   const powers = [...s.ownedPowers].flatMap((id) => powerById.get(id) ?? [])
   return (
     <div className="card sticky">
-      <h2>
-        Character at level
-        <input
-          type="number" min={1} max={max} value={s.level} aria-label="Summary level"
-          onChange={(e) => onLevel(Math.max(1, Math.min(max, +e.target.value || 1)))}
-        />
-      </h2>
+      <h2>Character at level {s.level}</h2>
       <div className="stats">
         <Stat label="Vitality" value={s.hp} />
         <Stat label="Force" value={s.fp} />

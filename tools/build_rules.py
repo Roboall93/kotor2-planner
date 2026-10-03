@@ -13,16 +13,16 @@ import sys
 # classes.2da row -> short codes used by the per-class columns in other tables.
 # feat/skill/featgain use 3-letter codes; spells.2da uses long names; acbonus uses its own.
 CLASSES = [
-    # row, code, spells col, acbonus col, base class it upgrades from, side
-    (3, "jgd", "guardian", "jdg", None, None),
-    (4, "jcn", "consular", "jdc", None, None),
-    (5, "jsn", "sentinel", "jds", None, None),
-    (11, "jwm", "weapmstr", "jwm", "jgd", "light"),
-    (12, "jma", "jedimaster", "jma", "jcn", "light"),
-    (13, "jwa", "watchman", "jwa", "jsn", "light"),
-    (14, "sma", "marauder", "sma", "jgd", "dark"),
-    (15, "sld", "sithlord", "sld", "jcn", "dark"),
-    (16, "sas", "assassin", "sas", "jsn", "dark"),
+    # row, code, spells col, acbonus col, prestige?, side
+    (3, "jgd", "guardian", "jdg", False, None),
+    (4, "jcn", "consular", "jdc", False, None),
+    (5, "jsn", "sentinel", "jds", False, None),
+    (11, "jwm", "weapmstr", "jwm", True, "light"),
+    (12, "jma", "jedimaster", "jma", True, "light"),
+    (13, "jwa", "watchman", "jwa", True, "light"),
+    (14, "sma", "marauder", "sma", True, "dark"),
+    (15, "sld", "sithlord", "sld", True, "dark"),
+    (16, "sas", "assassin", "sas", True, "dark"),
 ]
 
 
@@ -52,7 +52,7 @@ def main(raw, out):
     skills_2da = load(raw, "skills")
 
     classes = []
-    for row, code, _spellcol, accol, base, side in CLASSES:
+    for row, code, _spellcol, accol, prestige, side in CLASSES:
         r = classes_2da[row]
         atk = load(raw, r["attackbonustable"].lower())
         saves = load(raw, r["savingthrowtable"].lower())
@@ -64,7 +64,7 @@ def main(raw, out):
             "hitDie": num(r["hitdie"]),
             "forceDie": num(r["forcedie"]),
             "skillPointBase": num(r["skillpointbase"]),
-            "prestigeOf": base,
+            "prestige": prestige,
             "side": side,
             # index = class level - 1
             "bab": [num(list(x.values())[1]) for x in atk][:50],

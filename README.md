@@ -27,6 +27,7 @@ Verified against real saves (Jedi Sentinel, levels 3–8):
 
 Still unverified:
 - Base attack bonus: classes.2da gives every class the full table
-- Prestige classes: level 15 minimum, base class → prestige mapping, alignment requirement
+- Prestige classes: level 15 minimum and alignment requirement (any base class can take any prestige class)
+- Whether unspent skill points carry over to the next level (the planner assumes not)
 - Whether WIS increases apply to Force points retroactively
 - Multiclass defense bonus (class bonuses are summed)

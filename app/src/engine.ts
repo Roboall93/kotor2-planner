@@ -7,7 +7,7 @@ export interface ClassDef {
   hitDie: number
   forceDie: number
   skillPointBase: number
-  prestigeOf: string | null
+  prestige: boolean
   side: 'light' | 'dark' | null
   bab: number[]
   fort: number[]
@@ -68,6 +68,7 @@ export const ATTR_NAMES: Record<Attr, string> = {
 //   force    = sum(force die + WIS mod) over levels 2+ , + 40 (Force Sensitive, granted at level 2)
 //   skill points = max(1, base + INT mod), x4 at level 1; cross-class ranks cost 2
 //   the Exile picks no Force powers at level 1 (classpowergain's level-1 row is skipped)
+//   skill ranks never exceed level + 3 (cross-class: half); unspent points are not banked
 export const POINT_BUY = 30
 export const MAX_LEVEL = 50
 export const PRESTIGE_MIN_LEVEL = 15
@@ -75,10 +76,11 @@ const WAR_VETERAN_HP = 25
 const FORCE_SENSITIVE_FP = 40
 const FORCE_SENSITIVE_LEVEL = 2
 // Feats the Exile always has that are story-granted rather than class-granted.
-const EXILE_FEATS = [206] // War Veteran
+export const EXILE_FEATS = [206] // War Veteran
 
-export const BASE_CLASSES = rules.classes.filter((c) => !c.prestigeOf)
-export const prestigeOptions = (base: string) => rules.classes.filter((c) => c.prestigeOf === base)
+export const BASE_CLASSES = rules.classes.filter((c) => !c.prestige)
+// Any base class can take any prestige class; only alignment gates it in game.
+export const PRESTIGE_CLASSES = rules.classes.filter((c) => c.prestige)
 
 export const mod = (score: number) => Math.floor((score - 10) / 2)
 export const pointCost = (score: number) => {
@@ -139,7 +141,8 @@ export interface LevelState {
   ref: number
   will: number
   defense: number
-  issues: string[]
+  issues: string[] // rule violations
+  openPicks: number // feat + power picks not made yet
 }
 
 export const classAt = (b: Build, level: number) =>
@@ -156,6 +159,9 @@ export function simulate(b: Build): LevelState[] {
   const attrs = { ...b.attrs }
   const owned = new Set<number>(EXILE_FEATS)
   const powers = new Set<number>()
+  // Where each feat/power came from, so a repeat pick can say where the first one is.
+  const featSource = new Map<number, string>(EXILE_FEATS.map((f) => [f, 'granted by story']))
+  const powerSource = new Map<number, number>()
   const ranks = rules.skills.map(() => 0)
   let hitDice = 0
   let forceDice = 0
@@ -168,31 +174,44 @@ export function simulate(b: Build): LevelState[] {
 
     if (level % 4 === 0) {
       if (choice.attr) attrs[choice.attr]++
-      else issues.push('Attribute increase not assigned')
     } else if (choice.attr) issues.push('Attribute increases only come every 4 levels')
 
-    const granted = rules.feats
-      .filter((f) => f.classes[cls.id]?.grant === classLevel && !owned.has(f.id))
-      .map((f) => f.id)
-    granted.forEach((f) => owned.add(f))
+    const grantedNow = rules.feats.filter((f) => f.classes[cls.id]?.grant === classLevel)
+    for (const f of grantedNow) {
+      if (featSource.get(f.id)?.startsWith('taken')) {
+        issues.push(`${f.name} is granted here but was ${featSource.get(f.id)}, so that pick is wasted`)
+      }
+    }
+    const granted = grantedNow.filter((f) => !owned.has(f.id)).map((f) => f.id)
+    granted.forEach((f) => { owned.add(f); featSource.set(f, `granted at level ${level}`) })
 
     const featPicks = cls.featPicks[classLevel - 1] ?? 0
     if (choice.feats.length > featPicks) issues.push(`Too many feats (${choice.feats.length}/${featPicks})`)
     for (const id of choice.feats) {
+      const name = featById.get(id)?.name
+      if (featSource.has(id)) {
+        issues.push(`${name}: already ${featSource.get(id)}`)
+        continue
+      }
       const why = featBlocked(id, cls, level, owned)
-      if (why) issues.push(`${featById.get(id)?.name}: ${why}`)
+      if (why) issues.push(`${name}: ${why}`)
       owned.add(id)
+      featSource.set(id, `taken at level ${level}`)
     }
-    if (choice.feats.length < featPicks) issues.push(`${featPicks - choice.feats.length} feat pick(s) unspent`)
 
     const powerPicks = level === 1 ? 0 : (cls.powerPicks[classLevel - 1] ?? 0)
     if (choice.powers.length > powerPicks) issues.push(`Too many powers (${choice.powers.length}/${powerPicks})`)
     for (const id of choice.powers) {
+      const name = powerById.get(id)?.name
+      if (powers.has(id)) {
+        issues.push(`${name}: already taken at level ${powerSource.get(id)}`)
+        continue
+      }
       const why = powerBlocked(id, cls, level, powers)
-      if (why) issues.push(`${powerById.get(id)?.name}: ${why}`)
+      if (why) issues.push(`${name}: ${why}`)
       powers.add(id)
+      powerSource.set(id, level)
     }
-    if (choice.powers.length < powerPicks) issues.push(`${powerPicks - choice.powers.length} power pick(s) unspent`)
 
     const skillPoints = Math.max(1, cls.skillPointBase + mod(attrs.int)) * (level === 1 ? 4 : 1)
     let spent = 0
@@ -222,6 +241,7 @@ export function simulate(b: Build): LevelState[] {
       will: sum('will') + mod(attrs.wis),
       defense: 10 + mod(attrs.dex) + sum('classDefense'),
       issues,
+      openPicks: Math.max(0, featPicks - choice.feats.length) + Math.max(0, powerPicks - choice.powers.length),
     })
   })
   return out
@@ -280,5 +300,125 @@ export function decodeBuild(s: string): Build | null {
     }
   } catch {
     return null
+  }
+}
+
+// --- Stages ----------------------------------------------------------------
+// A stage is a run of levels where class and INT can't change: stages start at
+// level 1, at every attribute increase (4, 8, 12...) and at the prestige level.
+// Picks inside a stage are planned together; the placer assigns each one to the
+// earliest level where it is legal, so the per-level plan stays game-accurate.
+
+export interface Stage { start: number; end: number }
+
+export function stagesOf(b: Build): Stage[] {
+  const n = b.levels.length
+  const cuts = new Set([1])
+  for (let l = 4; l <= n; l += 4) cuts.add(l)
+  if (b.prestige && b.prestigeAt <= n) cuts.add(b.prestigeAt)
+  const sorted = [...cuts].sort((x, y) => x - y)
+  return sorted.map((start, i) => ({ start, end: (sorted[i + 1] ?? n + 1) - 1 }))
+}
+
+export const stageLevels = (st: Stage) => Array.from({ length: st.end - st.start + 1 }, (_, i) => st.start + i)
+
+export type PickKind = 'feats' | 'powers'
+
+/** Assigns picks to the stage's levels in order, earliest legal slot first. */
+export function placePicks(kind: PickKind, picks: number[], st: Stage, states: LevelState[]) {
+  const prev = states[st.start - 2]
+  const owned = new Set<number>(kind === 'feats' ? (prev?.ownedFeats ?? EXILE_FEATS) : (prev?.ownedPowers ?? []))
+  let pending = picks.filter((id) => !owned.has(id))
+  const perLevel: number[][] = []
+  for (const level of stageLevels(st)) {
+    const s = states[level - 1]
+    if (kind === 'feats') s.granted.forEach((g) => owned.add(g))
+    const slots = kind === 'feats' ? s.featPicks : s.powerPicks
+    const chosen: number[] = []
+    for (const id of pending) {
+      if (chosen.length >= slots) break
+      const why = kind === 'feats' ? featBlocked(id, s.cls, level, owned) : powerBlocked(id, s.cls, level, owned)
+      if (!why && !owned.has(id)) chosen.push(id)
+    }
+    pending = pending.filter((id) => !chosen.includes(id))
+    chosen.forEach((id) => owned.add(id))
+    perLevel.push(chosen)
+  }
+  return { perLevel, unplaced: pending }
+}
+
+/** Writes a stage's picks into the build. Picks that can't be placed legally go in
+ *  the first free slot (or the last level) so they stay visible with a warning. */
+export function setStagePicks(b: Build, kind: PickKind, picks: number[], st: Stage) {
+  const states = simulate(b)
+  const { perLevel, unplaced } = placePicks(kind, picks, st, states)
+  stageLevels(st).forEach((level, i) => {
+    const s = states[level - 1]
+    const slots = kind === 'feats' ? s.featPicks : s.powerPicks
+    while (unplaced.length && perLevel[i].length < slots) perLevel[i].push(unplaced.shift()!)
+  })
+  perLevel[perLevel.length - 1].push(...unplaced)
+  stageLevels(st).forEach((level, i) => { b.levels[level - 1][kind] = perLevel[i] })
+}
+
+export const stagePicks = (b: Build, kind: PickKind, st: Stage) =>
+  stageLevels(st).flatMap((level) => b.levels[level - 1][kind].map((id) => ({ id, level })))
+
+/** Ranks gained per skill at a level (points / cost for the class at that level). */
+export function rankGains(b: Build, states: LevelState[], level: number): number[] {
+  const cls = states[level - 1].cls
+  return b.levels[level - 1].skills.map((pts, s) => Math.floor(pts / (isClassSkill(cls, s) ? 1 : 2)))
+}
+
+export const stageGains = (b: Build, states: LevelState[], st: Stage) =>
+  stageLevels(st).reduce((acc, level) => {
+    rankGains(b, states, level).forEach((g, s) => { acc[s] += g })
+    return acc
+  }, rules.skills.map(() => 0))
+
+/** Spreads the stage's wanted rank gains over its levels, round-robin, within
+ *  each level's point budget and rank cap. */
+export function placeSkills(gains: number[], st: Stage, states: LevelState[]) {
+  const ranks = [...(states[st.start - 2]?.ranks ?? rules.skills.map(() => 0))]
+  const remaining = [...gains]
+  const perLevel: number[][] = []
+  let unspent = 0
+  for (const level of stageLevels(st)) {
+    const s = states[level - 1]
+    let budget = s.skillPoints
+    const pts = rules.skills.map(() => 0)
+    for (let progress = true; progress;) {
+      progress = false
+      for (const sk of rules.skills) {
+        const cost = isClassSkill(s.cls, sk.id) ? 1 : 2
+        if (remaining[sk.id] > 0 && ranks[sk.id] < rankCap(s.cls, sk.id, level) && cost <= budget) {
+          ranks[sk.id]++
+          remaining[sk.id]--
+          pts[sk.id] += cost
+          budget -= cost
+          progress = true
+        }
+      }
+    }
+    unspent += budget
+    perLevel.push(pts)
+  }
+  return { perLevel, ok: remaining.every((r) => r === 0), unspent }
+}
+
+/** Re-spreads every stage's skills after a change (INT, class, prestige level)
+ *  moved budgets or caps. Wanted ranks per level come from the build before the
+ *  change; a stage that no longer fits keeps its old points and gets flagged. */
+export function reflowSkills(before: Build, after: Build) {
+  const beforeStates = simulate(before)
+  const zero = () => rules.skills.map(() => 0)
+  for (const st of stagesOf(after)) {
+    const states = simulate(after)
+    const gains = stageLevels(st).reduce((acc, level) => {
+      if (level <= before.levels.length) rankGains(before, beforeStates, level).forEach((g, s) => { acc[s] += g })
+      return acc
+    }, zero())
+    const placed = placeSkills(gains, st, states)
+    if (placed.ok) stageLevels(st).forEach((level, i) => { after.levels[level - 1].skills = placed.perLevel[i] })
   }
 }
