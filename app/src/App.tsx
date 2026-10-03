@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL, PRESTIGE_REQUIRED_LEVEL,
   EXILE_FEATS, classById, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
@@ -6,20 +6,21 @@ import {
   stageGains, stageLevels, stagePicks, stagesOf,
   type Attr, type Build, type LevelState, type PickKind, type Stage,
 } from './engine'
+import {
+  addBuild, ago, describe, importBuild, loadLibrary, readLibrary, removeBuild, saveActive, setActive,
+  type Library,
+} from './library'
 import './App.css'
 
-const STORAGE_KEY = 'kotor2-planner-build'
-
-function loadInitial(): Build {
-  const fromHash = location.hash.startsWith('#b=') ? decodeBuild(location.hash.slice(3)) : null
-  if (fromHash) return fromHash
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    const b = saved ? decodeBuild(saved) : null
-    if (b) return b
-  } catch { /* storage unavailable */ }
-  return newBuild()
+/** A link in the address bar is added to My builds (never overwriting one);
+ *  otherwise the build you last worked on opens. */
+function startup(): { lib: Library; id: string } {
+  const hash = location.hash.startsWith('#b=') ? location.hash.slice(3) : ''
+  if (hash && decodeBuild(hash)) return importBuild(hash)
+  const lib = loadLibrary()
+  return { lib, id: lib.activeId }
 }
+const codeOf = (lib: Library, id: string) => lib.builds.find((s) => s.id === id)!.code
 
 const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`)
 const range = (st: Stage) => (st.start === st.end ? `Level ${st.start}` : `Levels ${st.start}–${st.end}`)
@@ -40,6 +41,61 @@ function Icon({ name, size = 32 }: { name?: string | null; size?: number }) {
 /** One shared hover card for every feat/power on the page. Elements opt in with
  *  data-tip="f:<id>" or "p:<id>" (and optionally data-tip-chain); the card follows
  *  the pointer and shows icon, side, current cost and the in-game description. */
+function BuildsMenu({ activeId, onOpen, onNew, onDuplicate, onDelete }: {
+  activeId: string
+  onOpen: (id: string) => void
+  onNew: () => void
+  onDuplicate: (id: string) => void
+  onDelete: (id: string) => boolean
+}) {
+  const [show, setShow] = useState(false)
+  // Read fresh from storage whenever the menu opens, so it also reflects other tabs.
+  const [lib, setLib] = useState<Library>(readLibrary)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!show) return
+    const outside = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setShow(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setShow(false) }
+    document.addEventListener('mousedown', outside)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('mousedown', outside)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [show])
+  const builds = [...lib.builds].sort((a, b) => b.updated - a.updated)
+  const close = (fn: () => void) => () => { fn(); setShow(false) }
+
+  return (
+    <div className="builds-menu" ref={ref}>
+      <button aria-expanded={show} aria-haspopup="true" onClick={() => { setLib(readLibrary()); setShow(!show) }}>
+        My builds ▾
+      </button>
+      {show && (
+        <div className="builds-panel" role="menu">
+          <button className="primary new-build" onClick={close(onNew)}>+ New build</button>
+          <ul>
+            {builds.map((s) => {
+              const d = describe(s)
+              return (
+                <li key={s.id} className={s.id === activeId ? 'active' : ''}>
+                  <button className="open-build" role="menuitem" onClick={close(() => onOpen(s.id))}>
+                    <b>{d.name}</b>
+                    <span>{d.meta} · {ago(s.updated)}</span>
+                  </button>
+                  <button className="icon-btn" title="Duplicate" aria-label={`Duplicate ${d.name}`} onClick={close(() => onDuplicate(s.id))}>⧉</button>
+                  <button className="icon-btn" title="Delete" aria-label={`Delete ${d.name}`} onClick={() => { if (onDelete(s.id)) setLib(readLibrary()) }}>×</button>
+                </li>
+              )
+            })}
+          </ul>
+          <p className="note">Saved in this browser only. Opening a share link adds it here instead of replacing your work.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const TIP_DELAY_MS = 1000
 
 function HoverCard({ alignment, cha }: { alignment: number; cha: number }) {
@@ -106,7 +162,9 @@ function HoverCard({ alignment, cha }: { alignment: number; cha: number }) {
 type Updater = (fn: (b: Build) => void, opts?: { reflow?: boolean }) => void
 
 export default function App() {
-  const [build, setBuild] = useState<Build>(loadInitial)
+  const [boot] = useState(startup)
+  const [activeId, setActiveId] = useState(boot.id)
+  const [build, setBuild] = useState<Build>(() => decodeBuild(codeOf(boot.lib, boot.id))!)
   const [openStage, setOpenStage] = useState(0)
   const [copied, setCopied] = useState(false)
   const states = useMemo(() => simulate(build), [build])
@@ -117,16 +175,24 @@ export default function App() {
   // the current plan, and a refresh keeps your edits instead of reloading the
   // link you first opened. replaceState doesn't add history entries.
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, code) } catch { /* ignore */ }
+    saveActive(activeId, code)
     if (location.hash !== `#b=${code}`) history.replaceState(null, '', `#b=${code}`)
-  }, [code])
+  }, [code, activeId])
+
+  const open = (l: Library, id: string) => {
+    setActiveId(id)
+    setBuild(decodeBuild(codeOf(l, id))!)
+    setOpenStage(0)
+  }
 
   // A share link pasted into a tab that already has the planner open only
   // changes the hash, which doesn't reload the page; load it here.
   useEffect(() => {
     const onHash = () => {
-      const next = location.hash.startsWith('#b=') ? decodeBuild(location.hash.slice(3)) : null
-      if (next) { setBuild(next); setOpenStage(0) }
+      const hash = location.hash.startsWith('#b=') ? location.hash.slice(3) : ''
+      if (!hash || !decodeBuild(hash)) return
+      const { lib: l, id } = importBuild(hash)
+      open(l, id)
     }
     addEventListener('hashchange', onHash)
     return () => removeEventListener('hashchange', onHash)
@@ -181,7 +247,25 @@ export default function App() {
             onChange={(e) => update((b) => { b.name = e.target.value })}
           />
           <button className="primary" onClick={share}>{copied ? 'Link copied' : 'Copy share link'}</button>
-          <button onClick={() => { if (confirm('Start a new build? The current one will be replaced.')) { setBuild(newBuild()); setOpenStage(0) } }}>New</button>
+          <BuildsMenu
+            activeId={activeId}
+            onOpen={(id) => open(setActive(id), id)}
+            onNew={() => { const r = addBuild(newBuild()); open(r.lib, r.id) }}
+            onDuplicate={(id) => {
+              const s = readLibrary().builds.find((x) => x.id === id)!
+              const b = decodeBuild(s.code)!
+              b.name = `${describe(s).name} (copy)`
+              const r = addBuild(b)
+              open(r.lib, r.id)
+            }}
+            onDelete={(id) => {
+              const s = readLibrary().builds.find((x) => x.id === id)!
+              if (!confirm(`Delete "${describe(s).name}"? This can't be undone; copy its share link first if you might want it back.`)) return false
+              const l = removeBuild(id)
+              if (id === activeId) open(l, l.activeId)
+              return true
+            }}
+          />
         </div>
       </header>
 
