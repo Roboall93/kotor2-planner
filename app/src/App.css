@@ -179,3 +179,17 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px
 .tick.open-picks:not(.current) { opacity: 0.65; }
 
 .warn-text { color: var(--warn); }
+
+/* Summary panel */
+.card h2 .lv-class { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.tabs { display: flex; gap: 2px; background: var(--panel-2); padding: 3px; border-radius: 8px; margin-bottom: 12px; }
+.tabs button { flex: 1; border: 0; background: none; padding: 5px 4px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.tabs button.on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 0 0 1px var(--line); }
+.list .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pips { color: var(--accent); font-size: 8px; letter-spacing: 1px; flex: none; }
+.new { font-size: 10px; color: var(--ok); border: 1px solid var(--ok); border-radius: 3px; padding: 0 4px; flex: none; }
+.auto { font-size: 10px; color: var(--gold); flex: none; }
+.fold { margin-top: 12px; }
+.fold summary { cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 600; padding: 4px 0; }
+.profs { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 12px 0 0; }
+.profs b { color: var(--text); font-weight: 600; margin-right: 4px; }

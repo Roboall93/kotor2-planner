@@ -205,7 +205,7 @@ export default function App() {
         </section>
 
         <section className="col summary">
-          <Summary state={states[stage.end - 1]} build={build} />
+          <Summary state={states[stage.end - 1]} before={states[stage.start - 2]} build={build} />
         </section>
       </main>
 
@@ -441,51 +441,153 @@ function LevelDetail({ stage: st, build, states }: { stage: Stage; build: Build;
   )
 }
 
-function Summary({ state: s, build }: { state: LevelState; build: Build }) {
-  const feats = [...s.ownedFeats].flatMap((id) => featById.get(id) ?? [])
-  const powers = [...s.ownedPowers].flatMap((id) => powerById.get(id) ?? [])
+interface Chained<T> { top: T; chain: T[] }
+
+/** Powers: folds each prerequisite tree (Shock → Force Lightning → Force Storm)
+ *  into its highest owned power, as the game's power screen does. */
+function collapsePowerTrees<T extends { id: number; prereqs: number[] }>(items: T[], byId: Map<number, T>): Chained<T>[] {
+  const owned = new Set(items.map((i) => i.id))
+  const required = new Set(items.flatMap((i) => i.prereqs.filter((p) => owned.has(p))))
+  const ancestors = (i: T, seen: Set<number>): T[] =>
+    i.prereqs.flatMap((p) => {
+      if (!owned.has(p) || seen.has(p)) return []
+      seen.add(p)
+      const parent = byId.get(p)!
+      return [...ancestors(parent, seen), parent]
+    })
+  return items.filter((i) => !required.has(i.id)).map((top) => ({ top, chain: [...ancestors(top, new Set()), top] }))
+}
+
+// Feats: tiers share a name (Toughness / Improved / Master, Unarmed Specialist I–VIII).
+// Prerequisites don't work here: Weapon Focus requires a proficiency that isn't a tier of it.
+const TIER_PREFIX = /^(Improved|Advanced|Master|Greater|Superior) /
+const ROMAN: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 }
+const featFamily = (name: string) => name.replace(TIER_PREFIX, '').replace(/ (I|II|III|IV|V|VI|VII|VIII|IX|X)$/, '')
+const featRank = (name: string) => {
+  const prefix = ['Improved', 'Advanced', 'Master', 'Greater', 'Superior'].map((p) => name.startsWith(`${p} `))
+  const tier = prefix[0] || prefix[1] ? 1 : prefix[2] || prefix[3] ? 2 : prefix[4] ? 3 : 0
+  return (ROMAN[name.split(' ').pop()!] ?? 0) * 10 + tier
+}
+function collapseFeatTiers<T extends { name: string }>(items: T[]): Chained<T>[] {
+  const families = new Map<string, T[]>()
+  for (const i of items) families.set(featFamily(i.name), [...(families.get(featFamily(i.name)) ?? []), i])
+  return [...families.values()].map((group) => {
+    const chain = group.sort((a, b) => featRank(a.name) - featRank(b.name))
+    return { top: chain[chain.length - 1], chain }
+  })
+}
+
+const isProficiency = (name: string) => /^(Weapon|Armor) Proficiency/.test(name)
+const profLabel = (name: string) =>
+  name.startsWith('Armor') ? `${name.replace('Armor Proficiency: ', '')} Armor` : name.replace('Weapon Proficiency: ', '')
+const GRANTED_POWERS = new Set(rules.classes.flatMap((c) => c.powerGrants.map(([, id]) => id)))
+type Tab = 'stats' | 'feats' | 'powers'
+type Entry = { id: number; name: string; description: string; prereqs: number[]; side?: string }
+
+function Summary({ state: s, before, build }: { state: LevelState; before?: LevelState; build: Build }) {
+  const [tab, setTab] = useState<Tab>('stats')
+  const chosen = new Set(build.levels.slice(0, s.level).flatMap((l) => l.feats))
+  const byName = (a: Chained<Entry>, b: Chained<Entry>) => a.top.name.localeCompare(b.top.name)
+
+  const feats = collapseFeatTiers<Entry>([...s.ownedFeats].flatMap((id) => featById.get(id) ?? [])).sort(byName)
+  const picked = feats.filter((c) => c.chain.some((f) => chosen.has(f.id)))
+  const chosenOwned = [...chosen].filter((id) => s.ownedFeats.has(id)).length
+  const profs = feats.filter((c) => !picked.includes(c) && isProficiency(c.top.name))
+  const features = feats.filter((c) => !picked.includes(c) && !profs.includes(c))
+  const powers = collapsePowerTrees<Entry>([...s.ownedPowers].flatMap((id) => powerById.get(id) ?? []), powerById).sort(byName)
+
+  // "new" = gained somewhere in the open stage
+  const isNew = (id: number, kind: 'feat' | 'power') =>
+    !(kind === 'feat' ? before?.ownedFeats : before?.ownedPowers)?.has(id)
+
+  const row = (c: Chained<Entry>, kind: 'feat' | 'power', extra?: React.ReactNode) => (
+    <li key={c.top.id} title={`${c.chain.map((x) => x.name).join(' → ')}\n\n${c.top.description}`}>
+      {kind === 'power' && <span className={`side ${c.top.side}`} />}
+      <span className="nm">{c.top.name}</span>
+      {c.chain.length > 1 && <span className="pips" aria-label={`${c.chain.length} tiers`}>{'●'.repeat(c.chain.length)}</span>}
+      {c.chain.some((x) => isNew(x.id, kind)) && <span className="new">new</span>}
+      {extra}
+    </li>
+  )
+
   return (
     <div className="card sticky">
-      <h2>Character at level {s.level}</h2>
-      <div className="stats">
-        <Stat label="Vitality" value={s.hp} />
-        <Stat label="Force" value={s.fp} />
-        <Stat label="Defense" value={s.defense} flag="Base defense: 10 + DEX + class bonus, before armor and items." />
-        <Stat label="Attack" value={signed(s.bab)} flag="Base attack bonus from classes.2da, which gives every class the full table. Not yet confirmed in game." />
-        <Stat label="Fortitude" value={signed(s.fort)} />
-        <Stat label="Reflex" value={signed(s.ref)} />
-        <Stat label="Will" value={signed(s.will)} />
-      </div>
-      <div className="attrs-row">
-        {ATTRS.map((a) => (
-          <div key={a}><b>{s.attrs[a]}</b><span>{a.toUpperCase()}</span></div>
+      <h2>Character at level {s.level} <span className="lv-class">{s.cls.name} {s.classLevel}</span></h2>
+      <div className="tabs" role="tablist">
+        {([['stats', 'Stats'], ['feats', `Feats · ${chosenOwned} picked`], ['powers', `Powers · ${s.ownedPowers.size}`]] as const).map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
-      <h3>Skills <small>rank + ability + feats</small></h3>
-      <div className="ranks">
-        {rules.skills.map((sk) => {
-          const ability = mod(s.attrs[sk.ability])
-          const bonus = s.skillBonus[sk.id]
-          return (
-            <div key={sk.id} title={`${s.ranks[sk.id]} ranks ${signed(ability)} ${sk.ability.toUpperCase()}${bonus ? ` +${bonus} feats` : ''}`}>
-              <span>{sk.name}</span><b>{s.ranks[sk.id] + ability + bonus}</b>
-            </div>
-          )
-        })}
-      </div>
-      <h3>Force powers ({powers.length})</h3>
-      <ul className="list">
-        {powers.map((p) => (
-          <li key={p.id} title={p.description}>
-            <span className={`side ${p.side}`} aria-label={`${p.side} side`} />{p.name}<em>{powerCost(p, build.alignment, s.attrs.cha)} FP</em>
-          </li>
-        ))}
-        {powers.length === 0 && <li className="empty">None yet</li>}
-      </ul>
-      <h3>Feats ({feats.length})</h3>
-      <ul className="list">
-        {feats.map((f) => <li key={f.id} title={f.description}>{f.name}</li>)}
-      </ul>
+
+      {tab === 'stats' && (
+        <>
+          <div className="stats">
+            <Stat label="Vitality" value={s.hp} />
+            <Stat label="Force" value={s.fp} />
+            <Stat label="Defense" value={s.defense} flag="Base defense: 10 + DEX + class bonus, before armor and items." />
+            <Stat label="Attack" value={signed(s.bab)} flag="Base attack bonus from classes.2da, which gives every class the full table. Not yet confirmed in game." />
+            <Stat label="Fortitude" value={signed(s.fort)} />
+            <Stat label="Reflex" value={signed(s.ref)} />
+            <Stat label="Will" value={signed(s.will)} />
+          </div>
+          <div className="attrs-row">
+            {ATTRS.map((a) => (
+              <div key={a}><b>{s.attrs[a]}</b><span>{a.toUpperCase()}</span></div>
+            ))}
+          </div>
+          <h3>Skills <small>rank + ability + feats</small></h3>
+          <div className="ranks">
+            {rules.skills.map((sk) => {
+              const ability = mod(s.attrs[sk.ability])
+              const bonus = s.skillBonus[sk.id]
+              return (
+                <div key={sk.id} title={`${s.ranks[sk.id]} ranks ${signed(ability)} ${sk.ability.toUpperCase()}${bonus ? ` +${bonus} feats` : ''}`}>
+                  <span>{sk.name}</span><b>{s.ranks[sk.id] + ability + bonus}</b>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {tab === 'feats' && (
+        <>
+          <h3>Your picks</h3>
+          <ul className="list">
+            {picked.map((c) => row(c, 'feat'))}
+            {picked.length === 0 && <li className="empty">None yet</li>}
+          </ul>
+          <details className="fold">
+            <summary>Class features ({features.length})</summary>
+            <ul className="list">{features.map((c) => row(c, 'feat'))}</ul>
+          </details>
+          {profs.length > 0 && (
+            <p className="profs"><b>Proficiencies</b> {profs.flatMap((c) => c.chain.map((x) => profLabel(x.name))).join(' · ')}</p>
+          )}
+        </>
+      )}
+
+      {tab === 'powers' && (
+        <>
+          {(['light', 'universal', 'dark'] as const).map((side) => {
+            const list = powers.filter((c) => c.top.side === side)
+            if (!list.length) return null
+            return (
+              <div key={side}>
+                <h3>{side === 'light' ? 'Light side' : side === 'dark' ? 'Dark side' : 'Universal'} ({list.length})</h3>
+                <ul className="list">
+                  {list.map((c) => row(c, 'power', <>
+                    {GRANTED_POWERS.has(c.top.id) && <span className="auto">auto</span>}
+                    <em>{powerCost(powerById.get(c.top.id)!, build.alignment, s.attrs.cha)} FP</em>
+                  </>))}
+                </ul>
+              </div>
+            )
+          })}
+          {powers.length === 0 && <p className="note">No Force powers yet.</p>}
+          {powers.length > 0 && <p className="note">Tiered powers show their highest tier; pips count the tiers owned. Hover for the full chain.</p>}
+        </>
+      )}
     </div>
   )
 }
