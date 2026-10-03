@@ -77,6 +77,8 @@ export const MAX_LEVEL = 50
 // You must already be level 15 to choose a prestige class, so its first level is
 // your 16th level-up at the earliest.
 export const PRESTIGE_REQUIRED_LEVEL = 15
+// Default plan length: about where a normal playthrough ends without grinding.
+export const DEFAULT_PLAN_LEVEL = 30
 export const PRESTIGE_MIN_LEVEL = PRESTIGE_REQUIRED_LEVEL + 1
 const WAR_VETERAN_HP = 25
 const FORCE_SENSITIVE_FP = 40
@@ -123,7 +125,7 @@ export function newBuild(base = 'jgd'): Build {
     prestigeAt: PRESTIGE_MIN_LEVEL,
     alignment: 50,
     attrs: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 },
-    levels: Array.from({ length: 20 }, emptyLevel),
+    levels: Array.from({ length: DEFAULT_PLAN_LEVEL }, emptyLevel),
   }
 }
 
