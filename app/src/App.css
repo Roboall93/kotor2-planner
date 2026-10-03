@@ -308,3 +308,21 @@ footer { color: var(--muted); }
 .list li { padding: 4px 0; }
 
 .field-actions { display: flex; gap: 14px; }
+
+/* Hover card for feats and powers */
+[data-tip] { cursor: help; }
+.pick summary[data-tip] { cursor: pointer; }
+.hovercard {
+  position: fixed; z-index: 50; pointer-events: none;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel)); color: var(--text);
+  border: 2px solid var(--line-bright); border-radius: 10px; padding: 10px 12px;
+  box-shadow: 0 0 18px rgba(95, 224, 200, 0.18), 0 10px 30px rgba(0, 0, 0, 0.7);
+}
+.hc-head { display: flex; gap: 10px; align-items: center; }
+.hc-head b { display: block; color: var(--accent); font-variant-caps: small-caps; letter-spacing: 0.06em; font-size: 15px; }
+.hc-side { font-size: 12px; color: var(--muted); }
+.hc-side.light { color: var(--light); }
+.hc-side.dark { color: var(--dark); }
+.hc-chain { margin: 8px 0 0; font-size: 12px; color: var(--gold); }
+.hc-desc { margin: 8px 0 0; font-size: 12.5px; line-height: 1.45; white-space: pre-line; max-height: 220px; overflow: hidden; }
+@media (hover: none) { .hovercard { display: none; } }

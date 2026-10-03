@@ -37,6 +37,56 @@ function Icon({ name, size = 32 }: { name?: string | null; size?: number }) {
   )
 }
 
+/** One shared hover card for every feat/power on the page. Elements opt in with
+ *  data-tip="f:<id>" or "p:<id>" (and optionally data-tip-chain); the card follows
+ *  the pointer and shows icon, side, current cost and the in-game description. */
+function HoverCard({ alignment, cha }: { alignment: number; cha: number }) {
+  const [tip, setTip] = useState<{ ref: string; chain?: string; x: number; y: number } | null>(null)
+  useEffect(() => {
+    const target = (e: Event) => (e.target as Element | null)?.closest?.('[data-tip]') as HTMLElement | null
+    const over = (e: MouseEvent) => {
+      const el = target(e)
+      setTip(el ? { ref: el.dataset.tip!, chain: el.dataset.tipChain, x: e.clientX, y: e.clientY } : null)
+    }
+    const move = (e: MouseEvent) => setTip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t))
+    const hide = () => setTip(null)
+    document.addEventListener('mouseover', over)
+    document.addEventListener('mousemove', move)
+    document.addEventListener('scroll', hide, true)
+    return () => {
+      document.removeEventListener('mouseover', over)
+      document.removeEventListener('mousemove', move)
+      document.removeEventListener('scroll', hide, true)
+    }
+  }, [])
+  if (!tip) return null
+
+  const [kind, raw] = tip.ref.split(':')
+  const feat = kind === 'f' ? featById.get(+raw) : undefined
+  const power = kind === 'p' ? powerById.get(+raw) : undefined
+  const item = feat ?? power
+  if (!item) return null
+  const side = power ? (power.side === 'light' ? 'Light side' : power.side === 'dark' ? 'Dark side' : 'Universal') : 'Feat'
+  const W = 340
+  const left = Math.min(tip.x + 16, innerWidth - W - 8)
+  const top = tip.y + 20 + 260 > innerHeight ? Math.max(8, tip.y - 270) : tip.y + 20
+  return (
+    <div className="hovercard" style={{ left, top, width: W }} role="tooltip">
+      <div className="hc-head">
+        <Icon name={item.icon} size={32} />
+        <div>
+          <b>{item.name}</b>
+          <span className={`hc-side ${power?.side ?? 'feat'}`}>
+            {side}{power && ` · ${powerCost(power, alignment, cha)} FP`}{power && power.cost !== powerCost(power, alignment, cha) && ` (base ${power.cost})`}
+          </span>
+        </div>
+      </div>
+      {tip.chain && <p className="hc-chain">{tip.chain}</p>}
+      <p className="hc-desc">{item.description}</p>
+    </div>
+  )
+}
+
 type Updater = (fn: (b: Build) => void, opts?: { reflow?: boolean }) => void
 
 export default function App() {
@@ -221,6 +271,7 @@ export default function App() {
           </h2>
 
           <LevelStrip states={states} stage={stage} onPick={openLevel} />
+          <HoverCard alignment={build.alignment} cha={states[stage.end - 1].attrs.cha} />
 
           {stages.map((st, i) =>
             i === stageIdx ? (
@@ -285,8 +336,8 @@ function StageRow({ stage: st, build, states, onOpen }: { stage: Stage; build: B
       <span className="lv-class">{classSpan(states, st)}</span>
       <span className="lv-picks">
         {attr && <span className="chip attr">+1 {attr.toUpperCase()}</span>}
-        {stagePicks(build, 'feats', st).map(({ id }) => <span key={`f${id}`} className="chip feat"><Icon name={featById.get(id)?.icon} size={16} />{featById.get(id)?.name}</span>)}
-        {stagePicks(build, 'powers', st).map(({ id }) => <span key={`p${id}`} className="chip power"><Icon name={powerById.get(id)?.icon} size={16} />{powerById.get(id)?.name}</span>)}
+        {stagePicks(build, 'feats', st).map(({ id }) => <span key={`f${id}`} className="chip feat" data-tip={`f:${id}`}><Icon name={featById.get(id)?.icon} size={16} />{featById.get(id)?.name}</span>)}
+        {stagePicks(build, 'powers', st).map(({ id }) => <span key={`p${id}`} className="chip power" data-tip={`p:${id}`}><Icon name={powerById.get(id)?.icon} size={16} />{powerById.get(id)?.name}</span>)}
       </span>
       {issues.length > 0 && <span className="dot">{issues.length}</span>}
     </button>
@@ -385,7 +436,7 @@ function StagePicks({ kind, stage: st, build, states, update }: {
         <div className="chosen">
           {chosen.map(({ id, level }) => (
             <details key={id} className="pick">
-              <summary>
+              <summary data-tip={`${isFeat ? 'f' : 'p'}:${id}`}>
                 <span className="lvl-tag">Lv {level}</span>
                 <Icon name={(isFeat ? featById.get(id) : powerById.get(id))?.icon} />
                 <b>{label(id)}</b>
@@ -554,7 +605,7 @@ function Summary({ state: s, before, build }: { state: LevelState; before?: Leve
     !!before && !(kind === 'feat' ? before.ownedFeats : before.ownedPowers).has(id)
 
   const row = (c: Chained<Entry>, kind: 'feat' | 'power', extra?: React.ReactNode) => (
-    <li key={c.top.id} title={`${c.chain.map((x) => x.name).join(' → ')}\n\n${c.top.description}`}>
+    <li key={c.top.id} data-tip={`${kind === 'feat' ? 'f' : 'p'}:${c.top.id}`} data-tip-chain={c.chain.length > 1 ? c.chain.map((x) => x.name).join(' → ') : undefined}>
       <Icon name={c.top.icon} size={24} />
       <span className="nm">{c.top.name}</span>
       {c.chain.length > 1 && <span className="pips" aria-label={`${c.chain.length} tiers`}>{'●'.repeat(c.chain.length)}</span>}
