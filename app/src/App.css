@@ -99,7 +99,7 @@ h1 { margin: 0; font-size: 22px; letter-spacing: 0.02em; }
 
 .granted { font-size: 13px; color: var(--gold); margin: 4px 0 10px; }
 .field { margin: 12px 0; }
-.field > label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+.field > label, .field-head > label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
 .chosen { display: grid; gap: 4px; margin-bottom: 6px; }
 .pick { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; }
 .pick summary { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; list-style: none; }
@@ -193,3 +193,6 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px
 .fold summary { cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 600; padding: 4px 0; }
 .profs { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 12px 0 0; }
 .profs b { color: var(--text); font-weight: 600; margin-right: 4px; }
+
+.field-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.field-head .link { padding: 0; }

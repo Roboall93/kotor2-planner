@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL,
   classById, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
-  placePicks, placeSkills, pointCost, powerById, powerCost, prestigeAlignmentOk, reflowSkills, rules, setStagePicks, simulate,
+  placePicks, placeSkills, pointCost, repeatSkillGains, powerById, powerCost, prestigeAlignmentOk, reflowSkills, rules, setStagePicks, simulate,
   stageGains, stageLevels, stagePicks, stagesOf,
   type Attr, type Build, type LevelState, type PickKind, type Stage,
 } from './engine'
@@ -389,9 +389,20 @@ function StageSkills({ stage: st, build, states, update }: { stage: Stage; build
     if (placed.ok) update((b) => stageLevels(st).forEach((l, i) => { b.levels[l - 1].skills = placed.perLevel[i] }))
   }
 
+  const prevStage = stagesOf(build).find((x) => x.end === st.start - 1)
+
   return (
     <div className="field">
-      <label>Skills <span className="count">{spentPts} of {budget} points</span></label>
+      <div className="field-head">
+        <label>Skills <span className="count">{spentPts} of {budget} points</span></label>
+        {prevStage && (
+          <button
+            className="link"
+            title="Copy the previous stage's skill spending per level-up. After an INT increase, add the extra points here; the next stage's repeat will include them."
+            onClick={() => apply(repeatSkillGains(build, states, prevStage, st))}
+          >Repeat previous stage</button>
+        )}
+      </div>
       <div className="skills">
         {rules.skills.map((sk) => {
           const cls = last.classSkills[sk.id]

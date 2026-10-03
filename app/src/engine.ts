@@ -470,6 +470,30 @@ export function placeSkills(gains: number[], st: Stage, states: LevelState[]) {
 /** Re-spreads every stage's skills after a change (INT, class, prestige level)
  *  moved budgets or caps. Wanted ranks per level come from the build before the
  *  change; a stage that no longer fits keeps its old points and gets flagged. */
+/** Rank gains that repeat the previous stage's per-level skill pattern over this
+ *  stage. Level 1's x4 points are left out of the pattern. Ranks are added one at
+ *  a time, round-robin, only while the stage's budget and rank caps allow, so a
+ *  skill that hits its cap doesn't block the others. */
+export function repeatSkillGains(b: Build, states: LevelState[], prev: Stage, st: Stage): number[] {
+  const normal = stageLevels(prev).filter((l) => l > 1)
+  const src = normal.length ? normal : stageLevels(prev)
+  const perLevel = rules.skills.map(() => 0)
+  src.forEach((l) => rankGains(b, states, l).forEach((g, s) => { perLevel[s] += g / src.length }))
+  const wanted = perLevel.map((r) => Math.round(r * stageLevels(st).length))
+
+  const target = rules.skills.map(() => 0)
+  for (let progress = true; progress;) {
+    progress = false
+    for (const s of rules.skills.map((sk) => sk.id).sort((x, y) => wanted[y] - wanted[x])) {
+      if (target[s] >= wanted[s]) continue
+      target[s]++
+      if (placeSkills(target, st, states).ok) progress = true
+      else target[s]--
+    }
+  }
+  return target
+}
+
 export function reflowSkills(before: Build, after: Build) {
   const beforeStates = simulate(before)
   const zero = () => rules.skills.map(() => 0)
