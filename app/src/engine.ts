@@ -328,7 +328,14 @@ export type PickKind = 'feats' | 'powers'
 export function placePicks(kind: PickKind, picks: number[], st: Stage, states: LevelState[]) {
   const prev = states[st.start - 2]
   const owned = new Set<number>(kind === 'feats' ? (prev?.ownedFeats ?? EXILE_FEATS) : (prev?.ownedPowers ?? []))
-  let pending = picks.filter((id) => !owned.has(id))
+  // Prerequisites go first: a pick that others in the batch build on must take
+  // the earliest slot, or its dependents can run out of levels (e.g. Heal before
+  // Shock would push Shock to the stage's last level and strand Force Lightning).
+  const prereqsOf = (id: number) => (kind === 'feats' ? featById.get(id)?.prereqs : powerById.get(id)?.prereqs) ?? []
+  const chainBelow = (id: number, seen = new Set<number>()): number =>
+    Math.max(0, ...picks.filter((p) => !seen.has(p) && prereqsOf(p).includes(id))
+      .map((p) => 1 + chainBelow(p, new Set([...seen, p]))))
+  let pending = picks.filter((id) => !owned.has(id)).sort((x, y) => chainBelow(y) - chainBelow(x))
   const perLevel: number[][] = []
   for (const level of stageLevels(st)) {
     const s = states[level - 1]
