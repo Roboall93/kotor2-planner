@@ -306,3 +306,5 @@ footer { color: var(--muted); }
 .pick summary .icon { border-color: var(--line-bright); }
 .list li .icon { margin-right: 2px; }
 .list li { padding: 4px 0; }
+
+.field-actions { display: flex; gap: 14px; }

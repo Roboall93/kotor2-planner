@@ -495,9 +495,27 @@ export function placeSkills(gains: number[], st: Stage, states: LevelState[]) {
   return { perLevel, ok: remaining.every((r) => r === 0), unspent }
 }
 
-/** Re-spreads every stage's skills after a change (INT, class, prestige level)
- *  moved budgets or caps. Wanted ranks per level come from the build before the
- *  change; a stage that no longer fits keeps its old points and gets flagged. */
+/** Takes one rank of a skill out of a stage. Re-spreads the smaller plan when it
+ *  fits; otherwise (e.g. INT dropped and the stage is already over budget) removes
+ *  the points from the most overspent level, so every click moves towards valid. */
+export function removeSkillRank(b: Build, states: LevelState[], st: Stage, skill: number) {
+  const gains = stageGains(b, states, st)
+  if (gains[skill] > 0) {
+    gains[skill]--
+    const placed = placeSkills(gains, st, states)
+    if (placed.ok) {
+      stageLevels(st).forEach((l, i) => { b.levels[l - 1].skills = placed.perLevel[i] })
+      return
+    }
+  }
+  const candidates = stageLevels(st).filter((l) => b.levels[l - 1].skills[skill] > 0)
+  if (!candidates.length) return
+  const over = (l: number) => states[l - 1].skillPointsSpent - states[l - 1].skillPoints
+  const level = candidates.reduce((best, l) => (over(l) >= over(best) ? l : best))
+  const cost = states[level - 1].classSkills[skill] ? 1 : 2
+  b.levels[level - 1].skills[skill] -= Math.min(cost, b.levels[level - 1].skills[skill])
+}
+
 /** Rank gains that repeat the previous stage's per-level skill pattern over this
  *  stage. Level 1's x4 points are left out of the pattern. Ranks are added one at
  *  a time, round-robin, only while the stage's budget and rank caps allow, so a
@@ -522,6 +540,9 @@ export function repeatSkillGains(b: Build, states: LevelState[], prev: Stage, st
   return target
 }
 
+/** Re-spreads every stage's skills after a change (INT, class, prestige level)
+ *  moved budgets or caps. Wanted ranks per level come from the build before the
+ *  change; a stage that no longer fits keeps its old points and gets flagged. */
 export function reflowSkills(before: Build, after: Build) {
   const beforeStates = simulate(before)
   const zero = () => rules.skills.map(() => 0)
