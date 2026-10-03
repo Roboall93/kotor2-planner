@@ -24,6 +24,19 @@ function loadInitial(): Build {
 const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`)
 const range = (st: Stage) => (st.start === st.end ? `Level ${st.start}` : `Levels ${st.start}–${st.end}`)
 
+/** Game icon (app/public/icons, extracted by tools/extract_icons.py). Hides itself
+ *  if the file is missing, so removing the icons folder leaves plain text. */
+function Icon({ name, size = 32 }: { name?: string | null; size?: number }) {
+  const [failed, setFailed] = useState(false)
+  if (!name || failed) return null
+  return (
+    <img
+      className="icon" src={`${import.meta.env.BASE_URL}icons/${name}.png`} alt="" width={size} height={size}
+      loading="lazy" onError={() => setFailed(true)}
+    />
+  )
+}
+
 type Updater = (fn: (b: Build) => void, opts?: { reflow?: boolean }) => void
 
 export default function App() {
@@ -210,7 +223,9 @@ export default function App() {
       </main>
 
       <footer>
-        Fan-made tool. Not affiliated with Lucasfilm, Obsidian or Aspyr. Values marked ? are not yet confirmed in game.
+        Fan-made, non-commercial tool. Not affiliated with or endorsed by Lucasfilm, Disney, Obsidian or Aspyr.
+        Feat and Force power icons are from Star Wars: Knights of the Old Republic II and remain © Lucasfilm Ltd.;
+        used here for reference only. Values marked ? are not yet confirmed in game.
       </footer>
     </div>
   )
@@ -256,8 +271,8 @@ function StageRow({ stage: st, build, states, onOpen }: { stage: Stage; build: B
       <span className="lv-class">{classSpan(states, st)}</span>
       <span className="lv-picks">
         {attr && <span className="chip attr">+1 {attr.toUpperCase()}</span>}
-        {stagePicks(build, 'feats', st).map(({ id }) => <span key={`f${id}`} className="chip feat">{featById.get(id)?.name}</span>)}
-        {stagePicks(build, 'powers', st).map(({ id }) => <span key={`p${id}`} className="chip power">{powerById.get(id)?.name}</span>)}
+        {stagePicks(build, 'feats', st).map(({ id }) => <span key={`f${id}`} className="chip feat"><Icon name={featById.get(id)?.icon} size={16} />{featById.get(id)?.name}</span>)}
+        {stagePicks(build, 'powers', st).map(({ id }) => <span key={`p${id}`} className="chip power"><Icon name={powerById.get(id)?.icon} size={16} />{powerById.get(id)?.name}</span>)}
       </span>
       {issues.length > 0 && <span className="dot">{issues.length}</span>}
     </button>
@@ -358,6 +373,7 @@ function StagePicks({ kind, stage: st, build, states, update }: {
             <details key={id} className="pick">
               <summary>
                 <span className="lvl-tag">Lv {level}</span>
+                <Icon name={(isFeat ? featById.get(id) : powerById.get(id))?.icon} />
                 <b>{label(id)}</b>
                 <button aria-label={`Remove ${label(id)}`} onClick={(e) => { e.preventDefault(); set(ids.filter((x) => x !== id)) }}>×</button>
               </summary>
@@ -493,7 +509,7 @@ const profLabel = (name: string) =>
   name.startsWith('Armor') ? `${name.replace('Armor Proficiency: ', '')} Armor` : name.replace('Weapon Proficiency: ', '')
 const GRANTED_POWERS = new Set(rules.classes.flatMap((c) => c.powerGrants.map(([, id]) => id)))
 type Tab = 'stats' | 'feats' | 'powers'
-type Entry = { id: number; name: string; description: string; prereqs: number[]; side?: string }
+type Entry = { id: number; name: string; description: string; prereqs: number[]; side?: string; icon: string | null }
 
 function Summary({ state: s, before, build }: { state: LevelState; before?: LevelState; build: Build }) {
   const [tab, setTab] = useState<Tab>('stats')
@@ -509,11 +525,11 @@ function Summary({ state: s, before, build }: { state: LevelState; before?: Leve
 
   // "new" = gained somewhere in the open stage
   const isNew = (id: number, kind: 'feat' | 'power') =>
-    !(kind === 'feat' ? before?.ownedFeats : before?.ownedPowers)?.has(id)
+    !!before && !(kind === 'feat' ? before.ownedFeats : before.ownedPowers).has(id)
 
   const row = (c: Chained<Entry>, kind: 'feat' | 'power', extra?: React.ReactNode) => (
     <li key={c.top.id} title={`${c.chain.map((x) => x.name).join(' → ')}\n\n${c.top.description}`}>
-      {kind === 'power' && <span className={`side ${c.top.side}`} />}
+      <Icon name={c.top.icon} size={24} />
       <span className="nm">{c.top.name}</span>
       {c.chain.length > 1 && <span className="pips" aria-label={`${c.chain.length} tiers`}>{'●'.repeat(c.chain.length)}</span>}
       {c.chain.some((x) => isNew(x.id, kind)) && <span className="new">new</span>}

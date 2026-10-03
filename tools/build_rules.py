@@ -35,6 +35,8 @@ POWER_GRANTS = {
     "jwa": [(1, 156), (7, 157), (13, 158)],  # Force Camouflage, Improved, Master
     "sas": [(1, 156), (7, 157), (13, 158)],
 }
+# Story feats the Exile always has; no class lists them, so keep them explicitly.
+STORY_FEATS = {206}  # War Veteran (+25 vitality)
 GRANTED_POWERS = {pid for grants in POWER_GRANTS.values() for _, pid in grants}
 
 
@@ -111,7 +113,7 @@ def main(raw, out):
                 per[code] = {"grant": granted}
             if pc_granted > 0:
                 per[code] = {"grant": pc_granted}
-        if not per:
+        if not per and num(r["_label"]) not in STORY_FEATS:
             continue
         feats.append({
             "id": num(r["_label"]),
@@ -120,6 +122,7 @@ def main(raw, out):
             "minLevel": num(r["mincharlevel"]),
             "prereqs": [num(p) for p in (r["prereqfeat1"], r["prereqfeat2"]) if p],
             "successor": num(r["successor"], -1),
+            "icon": (r["icon"] or "").lower() or None,
             "classes": per,
         })
 
@@ -142,6 +145,7 @@ def main(raw, out):
             "description": text(r["spelldesc"]),
             "cost": num(r["forcepoints"]),
             "side": {"G": "light", "E": "dark"}.get(r["goodevil"], "universal"),
+            "icon": (r["iconresref"] or "").lower() or None,
             "prereqs": [num(p) for p in (r["prerequisites"] or "").split("_") if p],
             "classes": per,
         })

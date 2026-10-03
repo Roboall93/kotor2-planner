@@ -26,6 +26,7 @@ export interface FeatDef {
   minLevel: number
   prereqs: number[]
   successor: number
+  icon: string | null
   classes: Record<string, { pick?: boolean; grant?: number }>
 }
 export interface PowerDef {
@@ -35,6 +36,7 @@ export interface PowerDef {
   cost: number
   side: 'light' | 'dark' | 'universal'
   prereqs: number[]
+  icon: string | null
   classes: Record<string, number>
 }
 export interface SkillDef {

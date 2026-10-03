@@ -7,6 +7,8 @@ Plan a Jedi Exile build level by level: attributes, feats, Force powers, skills 
 - `tools/extract_2da.py` reads `chitin.key` / `2DA.bif` / `dialog.tlk` from a KOTOR2 install into `raw/` (gitignored).
 - `tools/build_rules.py` trims that into `app/src/data/rules.json`, the only game data the site ships.
 - `tools/read_save.py` dumps the PC's stats from a save, used to check the engine's formulas.
+- `tools/extract_icons.py` writes the feat/power icons the rules use to `app/public/icons` (Lucasfilm artwork,
+  kept in its own folder: delete it and the app falls back to text).
 - `tools/compare_wiki.py` cross-checks the rules against a StrategyWiki data workbook (needs `openpyxl`).
 - `app/` is a Vite + React + TypeScript static site. `app/src/engine.ts` holds the rules engine.
 

@@ -298,3 +298,11 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px
 .link { color: var(--accent); font-variant-caps: small-caps; letter-spacing: 0.06em; }
 .link:hover:not(:disabled) { box-shadow: none; text-decoration: underline; }
 footer { color: var(--muted); }
+
+/* Game icons */
+.icon { flex: none; border-radius: 4px; border: 1px solid var(--line); background: #000; image-rendering: auto; }
+.chip .icon { border: 0; margin: -1px 4px -1px -4px; vertical-align: -3px; border-radius: 3px; }
+.chip { display: inline-flex; align-items: center; }
+.pick summary .icon { border-color: var(--line-bright); }
+.list li .icon { margin-right: 2px; }
+.list li { padding: 4px 0; }
