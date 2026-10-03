@@ -32,4 +32,5 @@ Still unverified:
 - Whether WIS increases apply to Force points retroactively
 - Multiclass defense bonus (class bonuses are summed)
 - Class Skill feats apply from the next level (assumes the level-up screen asks for skills before feats)
+- Prestige power grants (Inspire Followers, Crush Opposition, Fury, Force Camouflage) use the class levels in their descriptions
 - Feat effects (Caution/Gear Head/Empathy, Conditioning, Toughness) follow the in-game descriptions; higher tiers replace lower ones

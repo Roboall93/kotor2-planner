@@ -261,7 +261,10 @@ function StageRow({ stage: st, build, states, onOpen }: { stage: Stage; build: B
 function StageCard({ stage: st, build, states, update }: { stage: Stage; build: Build; states: LevelState[]; update: Updater }) {
   const [detail, setDetail] = useState(false)
   const levels = stageLevels(st)
-  const first = states[st.start - 1]
+  const grantedNames = levels.flatMap((l) => [
+    ...states[l - 1].granted.map((f) => `${featById.get(f)?.name} (${l})`),
+    ...states[l - 1].grantedPowers.map((p) => `${powerById.get(p)?.name} (${l})`),
+  ])
   const issues = stageIssues(states, st)
   const attrLevel = st.start % 4 === 0 ? st.start : null
 
@@ -276,11 +279,8 @@ function StageCard({ stage: st, build, states, update }: { stage: Stage; build: 
         <button className="link" onClick={() => setDetail(!detail)}>{detail ? 'Hide' : 'Show'} level by level</button>
       </div>
 
-      {first.granted.length + levels.slice(1).reduce((t, l) => t + states[l - 1].granted.length, 0) > 0 && (
-        <p className="granted">
-          Granted automatically:{' '}
-          {levels.flatMap((l) => states[l - 1].granted.map((f) => `${featById.get(f)?.name} (${l})`)).join(', ')}
-        </p>
+      {grantedNames.length > 0 && (
+        <p className="granted">Granted automatically: {grantedNames.join(', ')}</p>
       )}
 
       {attrLevel && (

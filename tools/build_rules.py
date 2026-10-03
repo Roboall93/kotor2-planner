@@ -26,6 +26,18 @@ CLASSES = [
 ]
 
 
+# Prestige powers the engine grants on its own (not in any 2DA). Class levels are
+# from each power's in-game description ("Prerequisites: Level 5 Sith Lord ...").
+POWER_GRANTS = {
+    "jma": [(1, 167), (5, 168), (9, 169), (13, 170), (17, 171), (21, 172)],  # Inspire Followers I-VI
+    "sld": [(1, 144), (5, 145), (9, 146), (13, 147), (17, 148), (21, 149)],  # Crush Opposition I-VI
+    "sma": [(1, 164), (5, 165), (9, 166)],  # Fury, Improved, Master
+    "jwa": [(1, 156), (7, 157), (13, 158)],  # Force Camouflage, Improved, Master
+    "sas": [(1, 156), (7, 157), (13, 158)],
+}
+GRANTED_POWERS = {pid for grants in POWER_GRANTS.values() for _, pid in grants}
+
+
 def load(raw, name):
     with open(os.path.join(raw, name + ".json"), encoding="utf-8") as fh:
         return json.load(fh)
@@ -75,6 +87,7 @@ def main(raw, out):
             "powerPicks": [num(x[code]) for x in powergain][:50],
             "classDefense": [num(x[accol]) for x in acbonus][:50],
             "classSkills": [i for i, s in enumerate(skills_2da) if s.get(code + "_class") == "1"],
+            "powerGrants": [list(g) for g in POWER_GRANTS.get(code, [])],
         })
 
     skills = [{"id": i, "name": text(s["name"]), "ability": s["keyability"].lower(),
@@ -116,9 +129,10 @@ def main(raw, out):
         per = {}
         for _row, code, col, *_ in CLASSES:
             lvl = num(r.get(col), -1)
-            if lvl >= 0:
+            # Granted powers aren't selectable (spells.2da marks Crush Opposition I as if it were).
+            if lvl >= 0 and num(r["_label"]) not in GRANTED_POWERS:
                 per[code] = max(lvl, 1)
-        if not per:
+        if not per and num(r["_label"]) not in GRANTED_POWERS:
             continue
         powers.append({
             "id": num(r["_label"]),

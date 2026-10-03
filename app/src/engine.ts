@@ -17,6 +17,7 @@ export interface ClassDef {
   powerPicks: number[]
   classDefense: number[]
   classSkills: number[]
+  powerGrants: [number, number][] // [class level, power id] granted automatically
 }
 export interface FeatDef {
   id: number
@@ -131,6 +132,7 @@ export interface LevelState {
   skillPoints: number
   skillPointsSpent: number
   granted: number[] // feats granted at this level
+  grantedPowers: number[] // powers granted at this level
   ownedFeats: Set<number>
   ownedPowers: Set<number>
   ranks: number[]
@@ -231,6 +233,13 @@ export function simulate(b: Build): LevelState[] {
       featSource.set(id, `taken at level ${level}`)
     }
 
+    const grantedPowers = cls.powerGrants.filter(([lv]) => lv === classLevel).map(([, id]) => id)
+    for (const id of grantedPowers) {
+      if (powers.has(id)) issues.push(`${powerById.get(id)?.name} is granted here but was taken at level ${powerSource.get(id)}`)
+      powers.add(id)
+      powerSource.set(id, level)
+    }
+
     const powerPicks = level === 1 ? 0 : (cls.powerPicks[classLevel - 1] ?? 0)
     if (choice.powers.length > powerPicks) issues.push(`Too many powers (${choice.powers.length}/${powerPicks})`)
     for (const id of choice.powers) {
@@ -267,7 +276,7 @@ export function simulate(b: Build): LevelState[] {
     const toughness = TOUGHNESS.filter((f) => owned.has(f)).length
 
     out.push({
-      level, cls, classLevel, attrs: { ...attrs }, featPicks, powerPicks, skillPoints, skillPointsSpent: spent, granted,
+      level, cls, classLevel, attrs: { ...attrs }, featPicks, powerPicks, skillPoints, skillPointsSpent: spent, granted, grantedPowers,
       ownedFeats: new Set(owned), ownedPowers: new Set(powers), ranks: [...ranks],
       classSkills, skillBonus: featSkillBonus(owned, ranks),
       hp: hitDice + (mod(attrs.con) + toughness) * level + WAR_VETERAN_HP,
