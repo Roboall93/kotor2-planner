@@ -40,20 +40,36 @@ function Icon({ name, size = 32 }: { name?: string | null; size?: number }) {
 /** One shared hover card for every feat/power on the page. Elements opt in with
  *  data-tip="f:<id>" or "p:<id>" (and optionally data-tip-chain); the card follows
  *  the pointer and shows icon, side, current cost and the in-game description. */
+const TIP_DELAY_MS = 1000
+
 function HoverCard({ alignment, cha }: { alignment: number; cha: number }) {
   const [tip, setTip] = useState<{ ref: string; chain?: string; x: number; y: number } | null>(null)
   useEffect(() => {
+    // Shows after the pointer rests on an element for TIP_DELAY_MS; moving to
+    // another element restarts the wait, leaving one hides the card at once.
+    let hovered: HTMLElement | null = null
+    let timer = 0
+    let pos = { x: 0, y: 0 }
     const target = (e: Event) => (e.target as Element | null)?.closest?.('[data-tip]') as HTMLElement | null
+    const hide = () => { clearTimeout(timer); hovered = null; setTip(null) }
     const over = (e: MouseEvent) => {
       const el = target(e)
-      setTip(el ? { ref: el.dataset.tip!, chain: el.dataset.tipChain, x: e.clientX, y: e.clientY } : null)
+      if (el === hovered) return
+      hide()
+      if (!el) return
+      hovered = el
+      pos = { x: e.clientX, y: e.clientY }
+      timer = window.setTimeout(() => setTip({ ref: el.dataset.tip!, chain: el.dataset.tipChain, ...pos }), TIP_DELAY_MS)
     }
-    const move = (e: MouseEvent) => setTip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t))
-    const hide = () => setTip(null)
+    const move = (e: MouseEvent) => {
+      pos = { x: e.clientX, y: e.clientY }
+      setTip((t) => (t ? { ...t, ...pos } : t))
+    }
     document.addEventListener('mouseover', over)
     document.addEventListener('mousemove', move)
     document.addEventListener('scroll', hide, true)
     return () => {
+      clearTimeout(timer)
       document.removeEventListener('mouseover', over)
       document.removeEventListener('mousemove', move)
       document.removeEventListener('scroll', hide, true)
@@ -479,7 +495,9 @@ function StageSkills({ stage: st, build, states, update }: { stage: Stage; build
       <div className="field-head">
         <label>Skills <span className="count">{spentPts} of {budget} points</span></label>
         <span className="field-actions">
-          {prevStage && (
+          {/* Levels 1-3 include character creation's x4 skill points, so there's no
+              level-up pattern to copy from them. */}
+          {prevStage && prevStage.start > 1 && (
             <button
               className="link"
               title="Copy the previous stage's skill spending per level-up. After an INT increase, add the extra points here; the next stage's repeat will include them."

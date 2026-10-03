@@ -519,12 +519,12 @@ export function removeSkillRank(b: Build, states: LevelState[], st: Stage, skill
 }
 
 /** Rank gains that repeat the previous stage's per-level skill pattern over this
- *  stage. Level 1's x4 points are left out of the pattern. Ranks are added one at
- *  a time, round-robin, only while the stage's budget and rank caps allow, so a
- *  skill that hits its cap doesn't block the others. */
+ *  stage (not offered after levels 1-3, whose character-creation points have no
+ *  level-up pattern). Ranks are added one at a time, round-robin, only while the
+ *  stage's budget and rank caps allow, so a skill that hits its cap doesn't block
+ *  the others. */
 export function repeatSkillGains(b: Build, states: LevelState[], prev: Stage, st: Stage): number[] {
-  const normal = stageLevels(prev).filter((l) => l > 1)
-  const src = normal.length ? normal : stageLevels(prev)
+  const src = stageLevels(prev)
   const perLevel = rules.skills.map(() => 0)
   src.forEach((l) => rankGains(b, states, l).forEach((g, s) => { perLevel[s] += g / src.length }))
   const wanted = perLevel.map((r) => Math.round(r * stageLevels(st).length))
