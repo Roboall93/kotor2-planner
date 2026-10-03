@@ -225,7 +225,7 @@ function LevelStrip({ states, stage, onPick }: { states: LevelState[]; stage: St
           <button
             key={s.level}
             role="listitem"
-            className={`tick ${s.cls.prestige ? 'prestige' : ''} ${inStage ? 'current' : ''} ${s.issues.length ? 'issue' : ''} ${s.openPicks ? 'open-picks' : ''}`}
+            className={`tick ${s.cls.prestige ? `prestige ${s.cls.side}` : ''} ${inStage ? 'current' : ''} ${s.issues.length ? 'issue' : ''} ${s.openPicks ? 'open-picks' : ''}`}
             title={`Level ${s.level} · ${s.cls.name} ${s.classLevel}${s.issues.length ? `\n${s.issues.join('\n')}` : ''}`}
             onClick={() => onPick(s.level)}
           >
