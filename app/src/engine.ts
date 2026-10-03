@@ -394,7 +394,9 @@ export function placePicks(kind: PickKind, picks: number[], st: Stage, states: L
   const chainBelow = (id: number, seen = new Set<number>()): number =>
     Math.max(0, ...picks.filter((p) => !seen.has(p) && prereqsOf(p).includes(id))
       .map((p) => 1 + chainBelow(p, new Set([...seen, p]))))
-  let pending = picks.filter((id) => !owned.has(id)).sort((x, y) => chainBelow(y) - chainBelow(x))
+  // Already-owned picks stay pending and end up unplaced (the per-level check below
+  // rejects them), so a story feat like War Veteran never looks like a legal pick.
+  let pending = [...picks].sort((x, y) => chainBelow(y) - chainBelow(x))
   const perLevel: number[][] = []
   for (const level of stageLevels(st)) {
     const s = states[level - 1]

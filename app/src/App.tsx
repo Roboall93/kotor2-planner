@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL, PRESTIGE_REQUIRED_LEVEL,
-  classById, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
+  EXILE_FEATS, classById, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
   placePicks, placeSkills, pointCost, repeatSkillGains, powerById, powerCost, prestigeAlignmentOk, reflowSkills, rules, setStagePicks, simulate,
   stageGains, stageLevels, stagePicks, stagesOf,
   type Attr, type Build, type LevelState, type PickKind, type Stage,
@@ -350,7 +350,7 @@ function StagePicks({ kind, stage: st, build, states, update }: {
   // can't be taken again here.
   const pickedAnywhere = new Set(build.levels.flatMap((l) => l[kind]))
   const before = states[st.start - 2]
-  const ownedBefore = isFeat ? before?.ownedFeats : before?.ownedPowers
+  const ownedBefore = before ? (isFeat ? before.ownedFeats : before.ownedPowers) : new Set<number>(isFeat ? EXILE_FEATS : [])
   const all = isFeat ? rules.feats : rules.powers
   const options = chosen.length >= slots ? [] : all.filter((x) =>
     !pickedAnywhere.has(x.id) && !ownedBefore?.has(x.id) &&
