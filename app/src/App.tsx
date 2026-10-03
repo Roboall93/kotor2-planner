@@ -49,6 +49,7 @@ function BuildsMenu({ activeId, onOpen, onNew, onDuplicate, onDelete }: {
   onDelete: (id: string) => boolean
 }) {
   const [show, setShow] = useState(false)
+  const [pos, setPos] = useState({ top: 0, right: 0 })
   // Read fresh from storage whenever the menu opens, so it also reflects other tabs.
   const [lib, setLib] = useState<Library>(readLibrary)
   const ref = useRef<HTMLDivElement>(null)
@@ -56,11 +57,14 @@ function BuildsMenu({ activeId, onOpen, onNew, onDuplicate, onDelete }: {
     if (!show) return
     const outside = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setShow(false) }
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setShow(false) }
+    const closeNow = () => setShow(false)
     document.addEventListener('mousedown', outside)
     document.addEventListener('keydown', esc)
+    addEventListener('resize', closeNow)
     return () => {
       document.removeEventListener('mousedown', outside)
       document.removeEventListener('keydown', esc)
+      removeEventListener('resize', closeNow)
     }
   }, [show])
   const builds = [...lib.builds].sort((a, b) => b.updated - a.updated)
@@ -68,11 +72,23 @@ function BuildsMenu({ activeId, onOpen, onNew, onDuplicate, onDelete }: {
 
   return (
     <div className="builds-menu" ref={ref}>
-      <button aria-expanded={show} aria-haspopup="true" onClick={() => { setLib(readLibrary()); setShow(!show) }}>
+      <button
+        aria-expanded={show} aria-haspopup="true"
+        onClick={(e) => {
+          // Fixed to the viewport, right-aligned with the button but never past
+          // either screen edge (the header wraps on phones).
+          const r = e.currentTarget.getBoundingClientRect()
+          const vw = document.documentElement.clientWidth // excludes the scrollbar, like position: fixed
+          const width = Math.min(380, vw - 24) // matches .builds-panel's CSS width
+          setPos({ top: r.bottom + 6, right: Math.max(12, Math.min(vw - r.right, vw - width - 12)) })
+          setLib(readLibrary())
+          setShow(!show)
+        }}
+      >
         My builds ▾
       </button>
       {show && (
-        <div className="builds-panel" role="menu">
+        <div className="builds-panel" role="menu" style={{ top: pos.top, right: pos.right }}>
           <button className="primary new-build" onClick={close(onNew)}>+ New build</button>
           <ul>
             {builds.map((s) => {
@@ -561,8 +577,11 @@ function StagePicks({ kind, stage: st, build, states, update }: {
 
 function StageSkills({ stage: st, build, states, update }: { stage: Stage; build: Build; states: LevelState[]; update: Updater }) {
   const gains = stageGains(build, states, st)
-  const budget = stageLevels(st).reduce((t, l) => t + states[l - 1].skillPoints, 0)
+  const carriedIn = states[st.start - 1].skillCarriedIn
+  const budget = carriedIn + stageLevels(st).reduce((t, l) => t + states[l - 1].skillPoints, 0)
   const spentPts = stageLevels(st).reduce((t, l) => t + states[l - 1].skillPointsSpent, 0)
+  const banked = states[st.end - 1].skillBanked
+  const isLastStage = st.end === build.levels.length
   const last = states[st.end - 1]
   const tryGains = (next: number[]) => placeSkills(next, st, states)
   const apply = (next: number[]) => {
@@ -577,7 +596,9 @@ function StageSkills({ stage: st, build, states, update }: { stage: Stage; build
   return (
     <div className="field">
       <div className="field-head">
-        <label>Skills <span className="count">{spentPts} of {budget} points</span></label>
+        <label>
+          Skills <span className="count">{spentPts} of {budget} points{carriedIn > 0 && ` · ${carriedIn} carried in`}</span>
+        </label>
         <span className="field-actions">
           {/* Levels 1-3 include character creation's x4 skill points, so there's no
               level-up pattern to copy from them. */}
@@ -614,6 +635,13 @@ function StageSkills({ stage: st, build, states, update }: { stage: Stage; build
           )
         })}
       </div>
+      {banked > 0 && (
+        <p className="bank-note">
+          {isLastStage
+            ? `${banked} points unspent at the end of the plan.`
+            : `${banked} points banked for the next stage. Leftover points carry over, e.g. to spend after prestiging.`}
+        </p>
+      )}
       <p className="note">
         Ranks shown are at level {st.end}. Points are spent level by level, capped at level + 3
         ({Math.floor((st.end + 3) / 2)} for cross-class at level {st.end}).
@@ -631,14 +659,14 @@ function LevelDetail({ stage: st, build, states }: { stage: Stage; build: Build;
           const s = states[l - 1]
           const c = build.levels[l - 1]
           const skills = c.skills.flatMap((pts, k) => (pts ? [`${rules.skills[k].name} ${pts}`] : []))
-          const left = s.skillPoints - s.skillPointsSpent
+          const left = s.skillBanked
           return (
             <tr key={l} className={s.issues.length ? 'bad' : ''}>
               <td>{l}</td>
               <td>{s.cls.name} {s.classLevel}{c.attr && <> · +1 {c.attr.toUpperCase()}</>}</td>
               <td>{c.feats.map((f) => featById.get(f)?.name).join(', ') || (s.featPicks ? '—' : '')}</td>
               <td>{c.powers.map((p) => powerById.get(p)?.name).join(', ') || (s.powerPicks ? '—' : '')}</td>
-              <td>{skills.join(', ')}{left > 0 && <span className="muted"> ({left} unspent)</span>}</td>
+              <td>{skills.join(', ')}{left > 0 && <span className="muted"> ({left} banked)</span>}</td>
             </tr>
           )
         })}

@@ -32,6 +32,7 @@ Verified against real saves (Jedi Sentinel, levels 3–8):
 - Skill points = max(1, base + INT mod), ×4 at level 1; cross-class ranks cost 2
 - Feat picks per class level (featgain.2da) and auto-granted feats (feat.2da)
 - No Force power picks at level 1, then classpowergain.2da
+- Unspent skill points carry over to later level-ups (confirmed by players; used to bank points for a prestige class)
 
 Agrees with StrategyWiki (via `compare_wiki.py`): vitality/Force per level, saves at every level,
 class skills, feat and power pick levels, power unlock levels (character level), class Defense
@@ -42,7 +43,6 @@ Still unverified:
 - Base attack bonus: classes.2da gives every class the full table
 - Prestige classes: must already be level 15 (so the first prestige level is 16) and alignment 75+/25- per StrategyWiki. The planner lets any base class take any
   prestige class; StrategyWiki pairs each base class with two
-- Whether unspent skill points carry over to the next level (the planner assumes not)
 - Whether WIS increases apply to Force points retroactively
 - Multiclass defense bonus (class bonuses are summed; the feat descriptions say so)
 - Class Skill feats apply from the next level (assumes the level-up screen asks for skills before feats)

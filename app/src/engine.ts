@@ -71,7 +71,8 @@ export const ATTR_NAMES: Record<Attr, string> = {
 //   force    = sum(force die + WIS mod) over levels 2+ , + 40 (Force Sensitive, granted at level 2)
 //   skill points = max(1, base + INT mod), x4 at level 1; cross-class ranks cost 2
 //   the Exile picks no Force powers at level 1 (classpowergain's level-1 row is skipped)
-//   skill ranks never exceed level + 3 (cross-class: half); unspent points are not banked
+//   skill ranks never exceed level + 3 (cross-class: half); unspent points carry over
+//   to the next level-up (players bank them, e.g. to spend after prestiging)
 export const POINT_BUY = 30
 export const MAX_LEVEL = 50
 // You must already be level 15 to choose a prestige class, so its first level is
@@ -136,8 +137,10 @@ export interface LevelState {
   attrs: Record<Attr, number>
   featPicks: number
   powerPicks: number
-  skillPoints: number
+  skillPoints: number // gained at this level
+  skillCarriedIn: number // banked from earlier levels
   skillPointsSpent: number
+  skillBanked: number // left after this level, carried to the next
   granted: number[] // feats granted at this level
   grantedPowers: number[] // powers granted at this level
   ownedFeats: Set<number>
@@ -205,6 +208,7 @@ export function simulate(b: Build): LevelState[] {
   const ranks = rules.skills.map(() => 0)
   let hitDice = 0
   let forceDice = 0
+  let bank = 0
 
   b.levels.forEach((choice, i) => {
     const level = i + 1
@@ -272,7 +276,9 @@ export function simulate(b: Build): LevelState[] {
       const cap = rankCap(classSkills[s], level)
       if (ranks[s] > cap) issues.push(`${rules.skills[s].name}: rank ${ranks[s]} exceeds cap ${cap}`)
     })
-    if (spent > skillPoints) issues.push(`Overspent skill points (${spent}/${skillPoints})`)
+    const carriedIn = bank
+    if (spent > skillPoints + carriedIn) issues.push(`Overspent skill points (${spent}/${skillPoints + carriedIn})`)
+    bank = Math.max(0, skillPoints + carriedIn - spent)
 
     hitDice += cls.hitDie
     if (level >= FORCE_SENSITIVE_LEVEL) forceDice += cls.forceDie
@@ -283,7 +289,7 @@ export function simulate(b: Build): LevelState[] {
     const toughness = TOUGHNESS.filter((f) => owned.has(f)).length
 
     out.push({
-      level, cls, classLevel, attrs: { ...attrs }, featPicks, powerPicks, skillPoints, skillPointsSpent: spent, granted, grantedPowers,
+      level, cls, classLevel, attrs: { ...attrs }, featPicks, powerPicks, skillPoints, skillCarriedIn: carriedIn, skillPointsSpent: spent, skillBanked: bank, granted, grantedPowers,
       ownedFeats: new Set(owned), ownedPowers: new Set(powers), ranks: [...ranks],
       classSkills, skillBonus: featSkillBonus(owned, ranks),
       hp: hitDice + (mod(attrs.con) + toughness) * level + WAR_VETERAN_HP,
@@ -473,10 +479,10 @@ export function placeSkills(gains: number[], st: Stage, states: LevelState[]) {
   const ranks = [...(states[st.start - 2]?.ranks ?? rules.skills.map(() => 0))]
   const remaining = [...gains]
   const perLevel: number[][] = []
-  let unspent = 0
+  let carry = states[st.start - 2]?.skillBanked ?? 0
   for (const level of stageLevels(st)) {
     const s = states[level - 1]
-    let budget = s.skillPoints
+    let budget = s.skillPoints + carry
     const pts = rules.skills.map(() => 0)
     for (let progress = true; progress;) {
       progress = false
@@ -491,10 +497,10 @@ export function placeSkills(gains: number[], st: Stage, states: LevelState[]) {
         }
       }
     }
-    unspent += budget
+    carry = budget // unspent points are banked for the next level
     perLevel.push(pts)
   }
-  return { perLevel, ok: remaining.every((r) => r === 0), unspent }
+  return { perLevel, ok: remaining.every((r) => r === 0), banked: carry }
 }
 
 /** Takes one rank of a skill out of a stage. Re-spreads the smaller plan when it
@@ -512,7 +518,7 @@ export function removeSkillRank(b: Build, states: LevelState[], st: Stage, skill
   }
   const candidates = stageLevels(st).filter((l) => b.levels[l - 1].skills[skill] > 0)
   if (!candidates.length) return
-  const over = (l: number) => states[l - 1].skillPointsSpent - states[l - 1].skillPoints
+  const over = (l: number) => states[l - 1].skillPointsSpent - states[l - 1].skillPoints - states[l - 1].skillCarriedIn
   const level = candidates.reduce((best, l) => (over(l) >= over(best) ? l : best))
   const cost = states[level - 1].classSkills[skill] ? 1 : 2
   b.levels[level - 1].skills[skill] -= Math.min(cost, b.levels[level - 1].skills[skill])
