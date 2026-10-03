@@ -36,13 +36,16 @@ def erf_index(path):
 
 
 def decode_tpc(buf):
+    """TPC rows are stored bottom-up, so the decoded image is flipped upright."""
     data_size, _alpha, w, h, enc, _mips = struct.unpack_from("<IfHHBB", buf, 0)
     pix = buf[128:]
     if data_size:  # DXT-compressed: 2 = DXT1, 4 = DXT5
         n = 1 if enc == 2 else 3
-        return Image.frombytes("RGBA", (w, h), pix[:data_size], "bcn", n)
-    mode, bpp = {1: ("L", 1), 2: ("RGB", 3), 4: ("RGBA", 4)}[enc]
-    return Image.frombytes(mode, (w, h), pix[:w * h * bpp])
+        img = Image.frombytes("RGBA", (w, h), pix[:data_size], "bcn", n)
+    else:
+        mode, bpp = {1: ("L", 1), 2: ("RGB", 3), 4: ("RGBA", 4)}[enc]
+        img = Image.frombytes(mode, (w, h), pix[:w * h * bpp])
+    return img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
 
 
 def main(game, rules_path, out_dir):
