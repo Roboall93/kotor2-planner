@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL,
-  classById, decodeBuild, emptyLevel, encodeBuild, featById, isClassSkill, mod, newBuild,
+  classById, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
   placePicks, placeSkills, pointCost, powerById, powerCost, reflowSkills, rules, setStagePicks, simulate,
   stageGains, stageLevels, stagePicks, stagesOf,
   type Attr, type Build, type LevelState, type PickKind, type Stage,
@@ -387,7 +387,7 @@ function StageSkills({ stage: st, build, states, update }: { stage: Stage; build
       <label>Skills <span className="count">{spentPts} of {budget} points</span></label>
       <div className="skills">
         {rules.skills.map((sk) => {
-          const cls = isClassSkill(last.cls, sk.id)
+          const cls = last.classSkills[sk.id]
           const plus = gains.map((g, s) => (s === sk.id ? g + 1 : g))
           const minus = gains.map((g, s) => (s === sk.id ? g - 1 : g))
           return (
@@ -454,11 +454,17 @@ function Summary({ state: s, build }: { state: LevelState; build: Build }) {
           <div key={a}><b>{s.attrs[a]}</b><span>{a.toUpperCase()}</span></div>
         ))}
       </div>
-      <h3>Skills <small>rank + ability</small></h3>
+      <h3>Skills <small>rank + ability + feats</small></h3>
       <div className="ranks">
-        {rules.skills.map((sk) => (
-          <div key={sk.id}><span>{sk.name}</span><b>{s.ranks[sk.id] + mod(s.attrs[sk.ability])}</b></div>
-        ))}
+        {rules.skills.map((sk) => {
+          const ability = mod(s.attrs[sk.ability])
+          const bonus = s.skillBonus[sk.id]
+          return (
+            <div key={sk.id} title={`${s.ranks[sk.id]} ranks ${signed(ability)} ${sk.ability.toUpperCase()}${bonus ? ` +${bonus} feats` : ''}`}>
+              <span>{sk.name}</span><b>{s.ranks[sk.id] + ability + bonus}</b>
+            </div>
+          )
+        })}
       </div>
       <h3>Force powers ({powers.length})</h3>
       <ul className="list">

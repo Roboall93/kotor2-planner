@@ -31,3 +31,5 @@ Still unverified:
 - Whether unspent skill points carry over to the next level (the planner assumes not)
 - Whether WIS increases apply to Force points retroactively
 - Multiclass defense bonus (class bonuses are summed)
+- Class Skill feats apply from the next level (assumes the level-up screen asks for skills before feats)
+- Feat effects (Caution/Gear Head/Empathy, Conditioning, Toughness) follow the in-game descriptions; higher tiers replace lower ones

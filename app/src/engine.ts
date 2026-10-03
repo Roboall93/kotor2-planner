@@ -134,6 +134,8 @@ export interface LevelState {
   ownedFeats: Set<number>
   ownedPowers: Set<number>
   ranks: number[]
+  classSkills: boolean[] // class-skill status used when spending this level's points
+  skillBonus: number[] // from Caution / Gear Head / Empathy chains
   hp: number
   fp: number
   bab: number
@@ -148,9 +150,38 @@ export interface LevelState {
 export const classAt = (b: Build, level: number) =>
   b.prestige && level >= b.prestigeAt ? classById[b.prestige] : classById[b.base]
 
-export const isClassSkill = (cls: ClassDef, skill: number) => cls.classSkills.includes(skill)
-export const rankCap = (cls: ClassDef, skill: number, level: number) =>
-  isClassSkill(cls, skill) ? level + 3 : Math.floor((level + 3) / 2)
+// --- Passive feat effects ---------------------------------------------------
+// The engine hardcodes these; numbers are from the feats' in-game descriptions.
+// Each chain's higher tier replaces the lower one rather than stacking.
+const SKILL_FEATS = [
+  { tiers: [7, 117, 118], skills: [1, 2], needsRank: true }, // Caution: Demolitions, Stealth
+  { tiers: [12, 119, 120], skills: [5, 6, 0], needsRank: true }, // Gear Head: Repair, Security, Computer Use
+  { tiers: [10, 121, 122], skills: [4, 3, 7], needsRank: false }, // Empathy: Persuade, Awareness, Treat Injury
+]
+const CONDITIONING = [13, 21, 22] // +1 / +2 / +3 to all saves
+const TOUGHNESS = [84, 124] // each gives +1 vitality per level, retroactive (Improved Toughness adds none)
+// "Class Skill: X" feats make a cross-class skill cost 1 point per rank.
+const CLASS_SKILL_FEATS: Record<number, number> = { 184: 0, 185: 1, 186: 5, 187: 6, 188: 2, 189: 7 }
+
+const tierOf = (tiers: number[], owned: Set<number>) => tiers.reduce((t, id, i) => (owned.has(id) ? i + 1 : t), 0)
+
+/** Bonus to each skill from owned feats (needs >= 1 rank where the feat says so). */
+export function featSkillBonus(owned: Set<number>, ranks: number[]): number[] {
+  const bonus = rules.skills.map(() => 0)
+  for (const chain of SKILL_FEATS) {
+    const tier = tierOf(chain.tiers, owned)
+    if (tier) chain.skills.forEach((sk) => { if (!chain.needsRank || ranks[sk] > 0) bonus[sk] += tier })
+  }
+  return bonus
+}
+
+/** Which skills count as class skills at a level: the class's own, plus any
+ *  Class Skill feat owned before that level (the game asks for skills before feats). */
+export const classSkillsFor = (cls: ClassDef, ownedBefore: Set<number>) =>
+  rules.skills.map((sk) => cls.classSkills.includes(sk.id) ||
+    Object.entries(CLASS_SKILL_FEATS).some(([feat, skill]) => skill === sk.id && ownedBefore.has(+feat)))
+
+export const rankCap = (isClass: boolean, level: number) => (isClass ? level + 3 : Math.floor((level + 3) / 2))
 
 /** Walks the build level by level, applying choices and validating them against the rules. */
 export function simulate(b: Build): LevelState[] {
@@ -185,6 +216,7 @@ export function simulate(b: Build): LevelState[] {
     const granted = grantedNow.filter((f) => !owned.has(f.id)).map((f) => f.id)
     granted.forEach((f) => { owned.add(f); featSource.set(f, `granted at level ${level}`) })
 
+    const classSkills = classSkillsFor(cls, owned)
     const featPicks = cls.featPicks[classLevel - 1] ?? 0
     if (choice.feats.length > featPicks) issues.push(`Too many feats (${choice.feats.length}/${featPicks})`)
     for (const id of choice.feats) {
@@ -217,11 +249,12 @@ export function simulate(b: Build): LevelState[] {
     let spent = 0
     choice.skills.forEach((pts, s) => {
       if (!pts) return
-      const cost = isClassSkill(cls, s) ? 1 : 2
+      const cost = classSkills[s] ? 1 : 2
       ranks[s] += Math.floor(pts / cost)
       spent += pts
       if (pts % cost) issues.push(`${rules.skills[s].name}: cross-class ranks cost 2 points`)
-      if (ranks[s] > rankCap(cls, s, level)) issues.push(`${rules.skills[s].name}: rank ${ranks[s]} exceeds cap ${rankCap(cls, s, level)}`)
+      const cap = rankCap(classSkills[s], level)
+      if (ranks[s] > cap) issues.push(`${rules.skills[s].name}: rank ${ranks[s]} exceeds cap ${cap}`)
     })
     if (spent > skillPoints) issues.push(`Overspent skill points (${spent}/${skillPoints})`)
 
@@ -230,15 +263,19 @@ export function simulate(b: Build): LevelState[] {
     const sum = (k: 'bab' | 'fort' | 'ref' | 'will' | 'classDefense') =>
       Object.entries(classLevels).reduce((t, [id, lv]) => t + (classById[id][k][lv - 1] ?? 0), 0)
 
+    const saveBonus = tierOf(CONDITIONING, owned)
+    const toughness = TOUGHNESS.filter((f) => owned.has(f)).length
+
     out.push({
       level, cls, classLevel, attrs: { ...attrs }, featPicks, powerPicks, skillPoints, skillPointsSpent: spent, granted,
       ownedFeats: new Set(owned), ownedPowers: new Set(powers), ranks: [...ranks],
-      hp: hitDice + mod(attrs.con) * level + WAR_VETERAN_HP,
+      classSkills, skillBonus: featSkillBonus(owned, ranks),
+      hp: hitDice + (mod(attrs.con) + toughness) * level + WAR_VETERAN_HP,
       fp: level >= FORCE_SENSITIVE_LEVEL ? forceDice + mod(attrs.wis) * (level - 1) + FORCE_SENSITIVE_FP : 0,
       bab: sum('bab'),
-      fort: sum('fort') + mod(attrs.con),
-      ref: sum('ref') + mod(attrs.dex),
-      will: sum('will') + mod(attrs.wis),
+      fort: sum('fort') + mod(attrs.con) + saveBonus,
+      ref: sum('ref') + mod(attrs.dex) + saveBonus,
+      will: sum('will') + mod(attrs.wis) + saveBonus,
       defense: 10 + mod(attrs.dex) + sum('classDefense'),
       issues,
       openPicks: Math.max(0, featPicks - choice.feats.length) + Math.max(0, powerPicks - choice.powers.length),
@@ -373,8 +410,8 @@ export const stagePicks = (b: Build, kind: PickKind, st: Stage) =>
 
 /** Ranks gained per skill at a level (points / cost for the class at that level). */
 export function rankGains(b: Build, states: LevelState[], level: number): number[] {
-  const cls = states[level - 1].cls
-  return b.levels[level - 1].skills.map((pts, s) => Math.floor(pts / (isClassSkill(cls, s) ? 1 : 2)))
+  const { classSkills } = states[level - 1]
+  return b.levels[level - 1].skills.map((pts, s) => Math.floor(pts / (classSkills[s] ? 1 : 2)))
 }
 
 export const stageGains = (b: Build, states: LevelState[], st: Stage) =>
@@ -397,8 +434,8 @@ export function placeSkills(gains: number[], st: Stage, states: LevelState[]) {
     for (let progress = true; progress;) {
       progress = false
       for (const sk of rules.skills) {
-        const cost = isClassSkill(s.cls, sk.id) ? 1 : 2
-        if (remaining[sk.id] > 0 && ranks[sk.id] < rankCap(s.cls, sk.id, level) && cost <= budget) {
+        const cost = s.classSkills[sk.id] ? 1 : 2
+        if (remaining[sk.id] > 0 && ranks[sk.id] < rankCap(s.classSkills[sk.id], level) && cost <= budget) {
           ranks[sk.id]++
           remaining[sk.id]--
           pts[sk.id] += cost
