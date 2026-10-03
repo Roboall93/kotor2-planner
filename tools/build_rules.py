@@ -85,7 +85,9 @@ def main(raw, out):
             "will": [num(x["willsave"]) for x in saves][:50],
             "featPicks": [num(x[code + "_reg"]) + num(x[code + "_bon"]) for x in featgain][:50],
             "powerPicks": [num(x[code]) for x in powergain][:50],
-            "classDefense": [num(x[accol]) for x in acbonus][:50],
+            # acbonus.2da has 51 rows indexed by class level (row 0 = level 0), unlike the
+            # other progression tables; matches StrategyWiki's Jedi Sense numbers.
+            "classDefense": [num(x[accol]) for x in acbonus][:51],
             "classSkills": [i for i, s in enumerate(skills_2da) if s.get(code + "_class") == "1"],
             "powerGrants": [list(g) for g in POWER_GRANTS.get(code, [])],
         })

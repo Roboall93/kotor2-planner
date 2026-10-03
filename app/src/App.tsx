@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL,
   classById, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
-  placePicks, placeSkills, pointCost, powerById, powerCost, reflowSkills, rules, setStagePicks, simulate,
+  placePicks, placeSkills, pointCost, powerById, powerCost, prestigeAlignmentOk, reflowSkills, rules, setStagePicks, simulate,
   stageGains, stageLevels, stagePicks, stagesOf,
   type Attr, type Build, type LevelState, type PickKind, type Stage,
 } from './engine'
@@ -155,8 +155,14 @@ export default function App() {
             <p className="note">
               {build.levels.length < PRESTIGE_MIN_LEVEL
                 ? `Plan to level ${PRESTIGE_MIN_LEVEL}+ to unlock.`
-                : `Available from level ${PRESTIGE_MIN_LEVEL}; the game also requires a matching alignment.`}
+                : `Available from level ${PRESTIGE_MIN_LEVEL} with alignment 75+ (light) or 25 or below (dark).`}
             </p>
+            {build.prestige && !prestigeAlignmentOk(classById[build.prestige], build.alignment) && (
+              <p className="note warn-text">
+                {classById[build.prestige].name} needs {classById[build.prestige].side === 'light' ? '75 or higher' : '25 or lower'} alignment;
+                the slider is at {build.alignment}.
+              </p>
+            )}
           </div>
 
           <div className="card">
@@ -319,6 +325,7 @@ function StagePicks({ kind, stage: st, build, states, update }: {
   kind: PickKind; stage: Stage; build: Build; states: LevelState[]; update: Updater
 }) {
   const isFeat = kind === 'feats'
+  const cha = states[st.end - 1].attrs.cha
   const chosen = stagePicks(build, kind, st)
   const ids = chosen.map((c) => c.id)
   const slots = stageLevels(st).reduce((t, l) => t + (isFeat ? states[l - 1].featPicks : states[l - 1].powerPicks), 0)
@@ -337,7 +344,7 @@ function StagePicks({ kind, stage: st, build, states, update }: {
   const label = (id: number) => {
     if (isFeat) return featById.get(id)?.name ?? `#${id}`
     const p = powerById.get(id)
-    return p ? `${p.name} (${p.side === 'universal' ? 'U' : p.side[0].toUpperCase()}, ${powerCost(p, build.alignment)} FP)` : `#${id}`
+    return p ? `${p.name} (${p.side === 'universal' ? 'U' : p.side[0].toUpperCase()}, ${powerCost(p, build.alignment, cha)} FP)` : `#${id}`
   }
   const desc = (id: number) => (isFeat ? featById.get(id)?.description : powerById.get(id)?.description) ?? ''
   const set = (next: number[]) => update((b) => setStagePicks(b, kind, next, st))
@@ -470,7 +477,7 @@ function Summary({ state: s, build }: { state: LevelState; build: Build }) {
       <ul className="list">
         {powers.map((p) => (
           <li key={p.id} title={p.description}>
-            <span className={`side ${p.side}`} aria-label={`${p.side} side`} />{p.name}<em>{powerCost(p, build.alignment)} FP</em>
+            <span className={`side ${p.side}`} aria-label={`${p.side} side`} />{p.name}<em>{powerCost(p, build.alignment, s.attrs.cha)} FP</em>
           </li>
         ))}
         {powers.length === 0 && <li className="empty">None yet</li>}

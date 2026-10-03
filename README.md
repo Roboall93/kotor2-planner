@@ -7,6 +7,7 @@ Plan a Jedi Exile build level by level: attributes, feats, Force powers, skills 
 - `tools/extract_2da.py` reads `chitin.key` / `2DA.bif` / `dialog.tlk` from a KOTOR2 install into `raw/` (gitignored).
 - `tools/build_rules.py` trims that into `app/src/data/rules.json`, the only game data the site ships.
 - `tools/read_save.py` dumps the PC's stats from a save, used to check the engine's formulas.
+- `tools/compare_wiki.py` cross-checks the rules against a StrategyWiki data workbook (needs `openpyxl`).
 - `app/` is a Vite + React + TypeScript static site. `app/src/engine.ts` holds the rules engine.
 
 ```bash
@@ -25,12 +26,19 @@ Verified against real saves (Jedi Sentinel, levels 3–8):
 - Feat picks per class level (featgain.2da) and auto-granted feats (feat.2da)
 - No Force power picks at level 1, then classpowergain.2da
 
+Agrees with StrategyWiki (via `compare_wiki.py`): vitality/Force per level, saves at every level,
+class skills, feat and power pick levels, power unlock levels (character level), class Defense
+bonus (acbonus.2da rows start at level 0), and Force power costs by alignment and Charisma
+(computed in 32-bit floats and truncated, as the game does).
+
 Still unverified:
 - Base attack bonus: classes.2da gives every class the full table
-- Prestige classes: level 15 minimum and alignment requirement (any base class can take any prestige class)
+- Prestige classes: level 15 and alignment 75+/25- per StrategyWiki. The planner lets any base class take any
+  prestige class; StrategyWiki pairs each base class with two
 - Whether unspent skill points carry over to the next level (the planner assumes not)
 - Whether WIS increases apply to Force points retroactively
-- Multiclass defense bonus (class bonuses are summed)
+- Multiclass defense bonus (class bonuses are summed; the feat descriptions say so)
 - Class Skill feats apply from the next level (assumes the level-up screen asks for skills before feats)
-- Prestige power grants (Inspire Followers, Crush Opposition, Fury, Force Camouflage) use the class levels in their descriptions
+- Prestige power grants (Inspire Followers, Crush Opposition, Fury, Force Camouflage) use the class levels in their descriptions;
+  StrategyWiki's progression tables put tier III at level 10 but its own power page says 9, as do the descriptions
 - Feat effects (Caution/Gear Head/Empathy, Conditioning, Toughness) follow the in-game descriptions; higher tiers replace lower ones

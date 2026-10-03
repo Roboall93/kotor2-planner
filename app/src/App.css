@@ -177,3 +177,5 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px
 
 .pills { display: flex; gap: 6px; }
 .tick.open-picks:not(.current) { opacity: 0.65; }
+
+.warn-text { color: var(--warn); }

@@ -15,7 +15,7 @@ export interface ClassDef {
   will: number[]
   featPicks: number[]
   powerPicks: number[]
-  classDefense: number[]
+  classDefense: number[] // index = class level (row 0 = level 0)
   classSkills: number[]
   powerGrants: [number, number][] // [class level, power id] granted automatically
 }
@@ -270,7 +270,7 @@ export function simulate(b: Build): LevelState[] {
     hitDice += cls.hitDie
     if (level >= FORCE_SENSITIVE_LEVEL) forceDice += cls.forceDie
     const sum = (k: 'bab' | 'fort' | 'ref' | 'will' | 'classDefense') =>
-      Object.entries(classLevels).reduce((t, [id, lv]) => t + (classById[id][k][lv - 1] ?? 0), 0)
+      Object.entries(classLevels).reduce((t, [id, lv]) => t + (classById[id][k][k === 'classDefense' ? lv : lv - 1] ?? 0), 0)
 
     const saveBonus = tierOf(CONDITIONING, owned)
     const toughness = TOUGHNESS.filter((f) => owned.has(f)).length
@@ -314,12 +314,20 @@ export function powerBlocked(id: number, cls: ClassDef, level: number, owned: Se
   return null
 }
 
-/** Force point cost after alignment adjustment (forceadjust.2da). */
-export function powerCost(p: PowerDef, alignment: number) {
+/** Force point cost after alignment (forceadjust.2da). Each point of CHA modifier
+ *  takes 5 percentage points off an opposite-alignment surcharge, down to none.
+ *  The game works in 32-bit floats and truncates, so 30 x 0.9 costs 26, not 27;
+ *  Math.fround reproduces that and matches StrategyWiki's cost tables. */
+export function powerCost(p: PowerDef, alignment: number, cha = 10) {
   if (p.side === 'universal') return p.cost
-  const row = rules.forceCost[Math.min(10, Math.floor(alignment / 10))]
-  return Math.round(p.cost * row[p.side])
+  let mult = Math.fround(rules.forceCost[Math.min(10, Math.floor(alignment / 10))][p.side])
+  if (mult > 1) mult = Math.max(1, Math.fround(mult - Math.fround(0.05) * Math.max(0, mod(cha))))
+  return Math.floor(p.cost * mult)
 }
+
+/** Alignment the game requires to take a prestige class (StrategyWiki). */
+export const prestigeAlignmentOk = (cls: ClassDef, alignment: number) =>
+  cls.side === 'light' ? alignment >= 75 : cls.side === 'dark' ? alignment <= 25 : true
 
 // --- Share links ---------------------------------------------------------
 // Compact positional encoding so links stay short enough for forum posts.
