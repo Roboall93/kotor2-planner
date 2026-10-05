@@ -61,18 +61,20 @@ export const readLibrary = (): Library => read()
 
 /** Adds a build (e.g. from a share link) unless an identical one is already
  *  saved, makes it active, and returns its id. */
-export function importBuild(code: string): { lib: Library; id: string } {
+export function importBuild(code: string): { lib: Library; id: string; added: boolean } {
   const normal = encodeBuild(decodeBuild(code)!) // v1 links and v2 links of the same build match
   let id = ''
+  let added = false
   const lib = change((l) => {
     id = l.builds.find((s) => s.code === normal)?.id ?? ''
     if (!id) {
       id = newId()
+      added = true
       l.builds.unshift({ id, code: normal, updated: Date.now() })
     }
     l.activeId = id
   })
-  return { lib, id }
+  return { lib, id, added }
 }
 
 export const saveActive = (id: string, code: string) =>

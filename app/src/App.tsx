@@ -10,13 +10,18 @@ import {
   addBuild, ago, describe, importBuild, loadLibrary, readLibrary, removeBuild, saveActive, setActive,
   type Library,
 } from './library'
+import { track } from './analytics'
 import './App.css'
 
 /** A link in the address bar is added to My builds (never overwriting one);
  *  otherwise the build you last worked on opens. */
 function startup(): { lib: Library; id: string } {
   const hash = location.hash.startsWith('#b=') ? location.hash.slice(3) : ''
-  if (hash && decodeBuild(hash)) return importBuild(hash)
+  if (hash && decodeBuild(hash)) {
+    const r = importBuild(hash)
+    if (r.added) track('share-link-opened') // a link new to this browser, not a reload of your own
+    return r
+  }
   const lib = loadLibrary()
   return { lib, id: lib.activeId }
 }
@@ -207,7 +212,8 @@ export default function App() {
     const onHash = () => {
       const hash = location.hash.startsWith('#b=') ? location.hash.slice(3) : ''
       if (!hash || !decodeBuild(hash)) return
-      const { lib: l, id } = importBuild(hash)
+      const { lib: l, id, added } = importBuild(hash)
+      if (added) track('share-link-opened')
       open(l, id)
     }
     addEventListener('hashchange', onHash)
@@ -233,6 +239,7 @@ export default function App() {
 
   const share = async () => {
     const url = `${location.origin}${location.pathname}#b=${code}`
+    track('share-link-copied') // counted even if the clipboard is blocked; the link is in the address bar
     try {
       await navigator.clipboard.writeText(url)
       setCopied(true)
@@ -266,7 +273,7 @@ export default function App() {
           <BuildsMenu
             activeId={activeId}
             onOpen={(id) => open(setActive(id), id)}
-            onNew={() => { const r = addBuild(newBuild()); open(r.lib, r.id) }}
+            onNew={() => { const r = addBuild(newBuild()); open(r.lib, r.id); track('new-build') }}
             onDuplicate={(id) => {
               const s = readLibrary().builds.find((x) => x.id === id)!
               const b = decodeBuild(s.code)!
@@ -407,6 +414,7 @@ export default function App() {
         Fan-made, non-commercial tool. Not affiliated with or endorsed by Lucasfilm, Disney, Obsidian or Aspyr.
         Feat and Force power icons are from Star Wars: Knights of the Old Republic II and remain © Lucasfilm Ltd.;
         used here for reference only. Values marked ? are not yet confirmed in game.
+        Visits and a few button clicks are counted anonymously (GoatCounter, no cookies); your builds stay in your browser.
       </footer>
     </div>
   )
