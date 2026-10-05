@@ -8,6 +8,7 @@ was verified.
 """
 import json
 import os
+import re
 import sys
 
 # classes.2da row -> short codes used by the per-class columns in other tables.
@@ -43,6 +44,21 @@ GRANTED_POWERS = {pid for grants in POWER_GRANTS.values() for _, pid in grants}
 def load(raw, name):
     with open(os.path.join(raw, name + ".json"), encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def power_save(desc):
+    """Save DC from a power's description: {"type", "base", "scales"} or None.
+
+    Most read "DC of 5 + the attacking character's level + ... Wisdom and Charisma
+    modifiers"; Force Scream uses 10 +, Affliction a flat 20, Plague 100 (no save).
+    Defensive powers (Force Resistance/Immunity) quote the *defender's* level: skipped.
+    """
+    d = " ".join(desc.split())
+    m = re.search(r"DC (?:of )?(\d+)( \+ the (attacking character|attacker|defending character)'s level)?", d)
+    if not m or m.group(3) == "defending character":
+        return None
+    kind = re.search(r"(Fortitude|Reflex|Will) sav", d)
+    return {"type": kind.group(1) if kind else None, "base": int(m.group(1)), "scales": bool(m.group(2))}
 
 
 def num(v, default=0):
@@ -146,6 +162,7 @@ def main(raw, out):
             "cost": num(r["forcepoints"]),
             "side": {"G": "light", "E": "dark"}.get(r["goodevil"], "universal"),
             "icon": (r["iconresref"] or "").lower() or None,
+            "save": power_save(text(r["spelldesc"])),
             "prereqs": [num(p) for p in (r["prerequisites"] or "").split("_") if p],
             "classes": per,
         })

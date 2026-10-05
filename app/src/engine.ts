@@ -37,6 +37,9 @@ export interface PowerDef {
   side: 'light' | 'dark' | 'universal'
   prereqs: number[]
   icon: string | null
+  // From the description: "DC of 5 + the attacking character's level + Wisdom and
+  // Charisma modifiers" for most; Force Scream 10 +, Affliction flat 20, Plague 100.
+  save: { type: 'Fortitude' | 'Reflex' | 'Will' | null; base: number; scales: boolean } | null
   classes: Record<string, number>
 }
 export interface SkillDef {
@@ -339,6 +342,25 @@ export function powerCost(p: PowerDef, alignment: number, cha = 10) {
 }
 
 /** Alignment the game requires to take a prestige class (StrategyWiki). */
+const FORCE_FOCUS = [88, 89, 90] // +2 / +3 / +4 to the DC of all your Force powers
+
+/** Save DC an enemy faces against a power, before items and Force forms.
+ *  null = no saving throw; Infinity = can't be saved against (Plague). */
+export function powerDC(p: PowerDef, s: LevelState): number | null {
+  if (!p.save) return null
+  if (p.save.base >= 100) return Infinity
+  const focus = FORCE_FOCUS.reduce((t, id, i) => (s.ownedFeats.has(id) ? i + 2 : t), 0)
+  return p.save.base + (p.save.scales ? s.level + mod(s.attrs.wis) + mod(s.attrs.cha) : 0) + focus
+}
+
+/** "(Will DC 24)", "(no save)" or '' for powers without a saving throw. */
+export function dcLabel(p: PowerDef, s: LevelState) {
+  const dc = powerDC(p, s)
+  if (dc === null) return ''
+  if (dc === Infinity) return '(no save)'
+  return `(${p.save!.type ? `${p.save!.type} ` : ''}DC ${dc})`
+}
+
 export const prestigeAlignmentOk = (cls: ClassDef, alignment: number) =>
   cls.side === 'light' ? alignment >= 75 : cls.side === 'dark' ? alignment <= 25 : true
 

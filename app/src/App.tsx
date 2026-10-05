@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL, PRESTIGE_REQUIRED_LEVEL,
-  EXILE_FEATS, classById, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
+  EXILE_FEATS, classById, dcLabel, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
   placePicks, placeSkills, pointCost, removeSkillRank, repeatSkillGains, powerById, powerCost, prestigeAlignmentOk, reflowSkills, rules, setStagePicks, simulate,
   stageGains, stageLevels, stagePicks, stagesOf,
   type Attr, type Build, type LevelState, type PickKind, type Stage,
@@ -119,7 +119,8 @@ function BuildsMenu({ activeId, onOpen, onNew, onDuplicate, onDelete }: {
 
 const TIP_DELAY_MS = 1000
 
-function HoverCard({ alignment, cha }: { alignment: number; cha: number }) {
+function HoverCard({ alignment, state }: { alignment: number; state: LevelState }) {
+  const cha = state.attrs.cha
   const [tip, setTip] = useState<{ ref: string; chain?: string; x: number; y: number } | null>(null)
   useEffect(() => {
     // Shows after the pointer rests on an element for TIP_DELAY_MS; moving to
@@ -171,6 +172,7 @@ function HoverCard({ alignment, cha }: { alignment: number; cha: number }) {
           <b>{item.name}</b>
           <span className={`hc-side ${power?.side ?? 'feat'}`}>
             {side}{power && ` · ${powerCost(power, alignment, cha)} FP`}{power && power.cost !== powerCost(power, alignment, cha) && ` (base ${power.cost})`}
+            {power && dcLabel(power, state) && <> · {dcLabel(power, state).slice(1, -1)} at level {state.level}</>}
           </span>
         </div>
       </div>
@@ -394,7 +396,7 @@ export default function App() {
           </h2>
 
           <LevelStrip states={states} stage={stage} onPick={openLevel} />
-          <HoverCard alignment={build.alignment} cha={states[stage.end - 1].attrs.cha} />
+          <HoverCard alignment={build.alignment} state={states[stage.end - 1]} />
 
           {stages.map((st, i) =>
             i === stageIdx ? (
@@ -745,7 +747,10 @@ function Summary({ state: s, before, build }: { state: LevelState; before?: Leve
   const row = (c: Chained<Entry>, kind: 'feat' | 'power', extra?: React.ReactNode) => (
     <li key={c.top.id} data-tip={`${kind === 'feat' ? 'f' : 'p'}:${c.top.id}`} data-tip-chain={c.chain.length > 1 ? c.chain.map((x) => x.name).join(' → ') : undefined}>
       <Icon name={c.top.icon} size={24} />
-      <span className="nm">{c.top.name}</span>
+      <span className="nm">
+        {c.top.name}
+        {kind === 'power' && dcLabel(powerById.get(c.top.id)!, s) && <small className="dc">{dcLabel(powerById.get(c.top.id)!, s)}</small>}
+      </span>
       {c.chain.length > 1 && <span className="pips" aria-label={`${c.chain.length} tiers`}>{'●'.repeat(c.chain.length)}</span>}
       {c.chain.some((x) => isNew(x.id, kind)) && <span className="new">new</span>}
       {extra}
