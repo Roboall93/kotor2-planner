@@ -313,7 +313,7 @@ footer { color: var(--muted); }
 [data-tip] { cursor: help; }
 .pick summary[data-tip] { cursor: pointer; }
 .hovercard {
-  position: fixed; z-index: 50; pointer-events: none;
+  position: fixed; z-index: 50; pointer-events: none; width: min(360px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: hidden;
   background: linear-gradient(180deg, var(--panel-2), var(--panel)); color: var(--text);
   border: 2px solid var(--line-bright); border-radius: 10px; padding: 10px 12px;
   box-shadow: 0 0 18px rgba(95, 224, 200, 0.18), 0 10px 30px rgba(0, 0, 0, 0.7);
@@ -324,7 +324,7 @@ footer { color: var(--muted); }
 .hc-side.light { color: var(--light); }
 .hc-side.dark { color: var(--dark); }
 .hc-chain { margin: 8px 0 0; font-size: 12px; color: var(--gold); }
-.hc-desc { margin: 8px 0 0; font-size: 12.5px; line-height: 1.45; white-space: pre-line; max-height: 220px; overflow: hidden; }
+.hc-desc { margin: 8px 0 0; font-size: 12.5px; line-height: 1.45; white-space: pre-line; }
 @media (hover: none) { .hovercard { display: none; } }
 
 /* My builds menu */

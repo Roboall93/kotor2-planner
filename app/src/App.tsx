@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL, PRESTIGE_REQUIRED_LEVEL,
   EXILE_FEATS, classById, dcLabel, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
@@ -153,6 +153,23 @@ function HoverCard({ alignment, state }: { alignment: number; state: LevelState 
       document.removeEventListener('scroll', hide, true)
     }
   }, [])
+
+  // Place the card from its measured size: below the pointer if it fits, else
+  // above, else as low as possible; never past an edge. Done on the DOM node
+  // after layout, so a long description is never cut off.
+  const cardRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = cardRef.current
+    if (!el || !tip) return
+    const vw = document.documentElement.clientWidth
+    const vh = innerHeight
+    const w = el.offsetWidth
+    const h = el.offsetHeight
+    const below = tip.y + 20
+    const above = tip.y - h - 12
+    el.style.left = `${Math.max(8, Math.min(tip.x + 16, vw - w - 8))}px`
+    el.style.top = `${below + h <= vh - 8 ? below : above >= 8 ? above : Math.max(8, vh - h - 8)}px`
+  })
   if (!tip) return null
 
   const [kind, raw] = tip.ref.split(':')
@@ -161,11 +178,8 @@ function HoverCard({ alignment, state }: { alignment: number; state: LevelState 
   const item = feat ?? power
   if (!item) return null
   const side = power ? (power.side === 'light' ? 'Light side' : power.side === 'dark' ? 'Dark side' : 'Universal') : 'Feat'
-  const W = 340
-  const left = Math.min(tip.x + 16, innerWidth - W - 8)
-  const top = tip.y + 20 + 260 > innerHeight ? Math.max(8, tip.y - 270) : tip.y + 20
   return (
-    <div className="hovercard" style={{ left, top, width: W }} role="tooltip">
+    <div className="hovercard" ref={cardRef} role="tooltip">
       <div className="hc-head">
         <Icon name={item.icon} size={32} />
         <div>
