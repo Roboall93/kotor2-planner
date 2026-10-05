@@ -365,51 +365,153 @@ export const prestigeAlignmentOk = (cls: ClassDef, alignment: number) =>
   cls.side === 'light' ? alignment >= 75 : cls.side === 'dark' ? alignment <= 25 : true
 
 // --- Share links ---------------------------------------------------------
-// Version 2 is sparse: only levels with choices are stored, and skills as
-// [skill, points] pairs, so an unfinished plan isn't hundreds of zeros long.
-// Version 1 links (every level, every skill) still decode.
-type SparseLevel = [number, number[], number[], number[], number] // level index, feats, powers, skill pairs, attr
+// The whole build travels in the URL after '#b='. Version 3 (current) is packed
+// binary, base64url-encoded:
+//   header: 3, name (varint length + UTF-8), base class, prestige class (0 = none),
+//           prestige level, alignment, 6 attributes, plan length
+//   then one entry per level, stopping after the last level with any choice:
+//     flags  bit0 feats · bit1 powers · bit2 skills listed · bit3 skills same as
+//            the previous level · bits4-6 attribute increase (1-6, 0 = none)
+//     feats/powers: varint count + varint 2DA ids
+//     skills: count, then per skill one byte (skill << 5 | points), points >= 31
+//             continue in a varint (banked points can be spent in bulk)
+// Players repeat skill spending most levels, so bit3 makes that one bit.
+// Versions 1 and 2 were base64 JSON (first byte '['); they still decode.
 
-const toBase64Url = (text: string) =>
-  btoa(String.fromCharCode(...new TextEncoder().encode(text))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const CLASS_CODES = ['jgd', 'jcn', 'jsn', 'jwm', 'jma', 'jwa', 'sma', 'sld', 'sas'] // order is part of the format
+const F_FEATS = 1, F_POWERS = 2, F_SKILLS = 4, F_SAME_SKILLS = 8
+
+const toBase64Url = (bytes: Uint8Array) =>
+  btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 const fromBase64Url = (s: string) =>
-  new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)))
+  Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+
+class ByteWriter {
+  bytes: number[] = []
+  byte(n: number) { this.bytes.push(n & 255) }
+  varint(n: number) {
+    for (; n >= 128; n = Math.floor(n / 128)) this.bytes.push((n % 128) | 128)
+    this.bytes.push(n)
+  }
+  ids(xs: number[]) { this.varint(xs.length); xs.forEach((x) => this.varint(x)) }
+}
+
+class ByteReader {
+  i = 0
+  b: Uint8Array
+  constructor(b: Uint8Array) { this.b = b }
+  get done() { return this.i >= this.b.length }
+  byte() {
+    if (this.done) throw new Error('truncated link')
+    return this.b[this.i++]
+  }
+  varint() {
+    let n = 0
+    for (let mul = 1, x = 128; x & 128; mul *= 128) { x = this.byte(); n += (x & 127) * mul }
+    return n
+  }
+  ids() { return Array.from({ length: this.varint() }, () => this.varint()) }
+}
 
 export function encodeBuild(b: Build): string {
-  const levels: SparseLevel[] = []
-  b.levels.forEach((l, i) => {
-    const skills = l.skills.flatMap((pts, s) => (pts ? [s, pts] : []))
-    const attr = l.attr ? ATTRS.indexOf(l.attr) : -1
-    if (l.feats.length || l.powers.length || skills.length || attr >= 0) levels.push([i, l.feats, l.powers, skills, attr])
-  })
-  const data = [2, b.name, b.base, b.prestige ?? '', b.prestigeAt, b.alignment, ATTRS.map((a) => b.attrs[a]), b.levels.length, levels]
-  return toBase64Url(JSON.stringify(data))
+  const w = new ByteWriter()
+  const name = new TextEncoder().encode(b.name)
+  w.byte(3)
+  w.varint(name.length)
+  name.forEach((x) => w.byte(x))
+  w.byte(CLASS_CODES.indexOf(b.base))
+  w.byte(b.prestige ? CLASS_CODES.indexOf(b.prestige) + 1 : 0)
+  w.byte(b.prestigeAt)
+  w.byte(b.alignment)
+  ATTRS.forEach((a) => w.byte(b.attrs[a]))
+  w.byte(b.levels.length)
+
+  const hasSkills = (l: LevelChoice) => l.skills.some((p) => p > 0)
+  let last = -1
+  b.levels.forEach((l, i) => { if (l.feats.length || l.powers.length || hasSkills(l) || l.attr) last = i })
+  for (let i = 0; i <= last; i++) {
+    const l = b.levels[i]
+    const prev = b.levels[i - 1]
+    const same = hasSkills(l) && !!prev && l.skills.every((p, s) => p === prev.skills[s])
+    w.byte((l.feats.length ? F_FEATS : 0) | (l.powers.length ? F_POWERS : 0) |
+      (hasSkills(l) && !same ? F_SKILLS : 0) | (same ? F_SAME_SKILLS : 0) |
+      ((l.attr ? ATTRS.indexOf(l.attr) + 1 : 0) << 4))
+    if (l.feats.length) w.ids(l.feats)
+    if (l.powers.length) w.ids(l.powers)
+    if (hasSkills(l) && !same) {
+      const spent = l.skills.flatMap((pts, s) => (pts > 0 ? [[s, pts]] : []))
+      w.varint(spent.length)
+      for (const [s, pts] of spent) {
+        w.byte((s << 5) | Math.min(pts, 31))
+        if (pts >= 31) w.varint(pts - 31)
+      }
+    }
+  }
+  return toBase64Url(Uint8Array.from(w.bytes))
 }
 
 export function decodeBuild(s: string): Build | null {
   try {
-    const d = JSON.parse(fromBase64Url(s))
-    if (!classById[d[2]] || (d[0] !== 1 && d[0] !== 2)) return null
-    let levels: LevelChoice[]
-    if (d[0] === 1) {
-      levels = d[7].map((l: [number[], number[], number[], number]) => ({
-        feats: l[0], powers: l[1], skills: l[2], attr: l[3] >= 0 ? ATTRS[l[3]] : undefined,
-      }))
-    } else {
-      levels = Array.from({ length: Math.min(MAX_LEVEL, d[7]) }, emptyLevel)
-      for (const [i, feats, powers, pairs, attr] of d[8] as SparseLevel[]) {
-        if (!levels[i]) continue
-        for (let k = 0; k < pairs.length; k += 2) levels[i].skills[pairs[k]] = pairs[k + 1]
-        Object.assign(levels[i], { feats, powers, attr: attr >= 0 ? ATTRS[attr] : undefined })
-      }
-    }
-    return {
-      name: d[1], base: d[2], prestige: d[3] || null, prestigeAt: Math.max(PRESTIGE_MIN_LEVEL, d[4]), alignment: d[5],
-      attrs: Object.fromEntries(ATTRS.map((a, i) => [a, d[6][i]])) as Record<Attr, number>,
-      levels,
-    }
+    const bytes = fromBase64Url(s)
+    return bytes[0] === 0x5b ? decodeJson(new TextDecoder().decode(bytes)) : decodeBinary(bytes)
   } catch {
     return null
+  }
+}
+
+function decodeBinary(bytes: Uint8Array): Build | null {
+  const r = new ByteReader(bytes)
+  if (r.byte() !== 3) return null
+  const name = new TextDecoder().decode(Uint8Array.from({ length: r.varint() }, () => r.byte()))
+  const base = CLASS_CODES[r.byte()]
+  const prestigeIdx = r.byte()
+  const prestige = prestigeIdx ? CLASS_CODES[prestigeIdx - 1] : null
+  if (!classById[base] || (prestigeIdx && !prestige)) return null
+  const prestigeAt = r.byte()
+  const alignment = r.byte()
+  const attrs = Object.fromEntries(ATTRS.map((a) => [a, r.byte()])) as Record<Attr, number>
+  const levels = Array.from({ length: Math.min(MAX_LEVEL, r.byte()) }, emptyLevel)
+  for (let i = 0; !r.done; i++) {
+    const flags = r.byte()
+    const l = levels[i] ?? emptyLevel() // tolerate entries past the plan length
+    if (flags & F_FEATS) l.feats = r.ids()
+    if (flags & F_POWERS) l.powers = r.ids()
+    if (flags & F_SKILLS) {
+      for (let n = r.varint(); n > 0; n--) {
+        const x = r.byte()
+        l.skills[x >> 5] = (x & 31) === 31 ? 31 + r.varint() : x & 31
+      }
+    }
+    if (flags & F_SAME_SKILLS && i > 0) l.skills = [...levels[i - 1].skills]
+    const attr = (flags >> 4) & 7
+    if (attr) l.attr = ATTRS[attr - 1]
+  }
+  return { name, base, prestige, prestigeAt: Math.max(PRESTIGE_MIN_LEVEL, prestigeAt), alignment: Math.min(100, alignment), attrs, levels }
+}
+
+// Versions 1 (every level, every skill) and 2 (sparse levels, skill pairs): base64 JSON.
+type SparseLevel = [number, number[], number[], number[], number] // level index, feats, powers, skill pairs, attr
+
+function decodeJson(text: string): Build | null {
+  const d = JSON.parse(text)
+  if (!classById[d[2]] || (d[0] !== 1 && d[0] !== 2)) return null
+  let levels: LevelChoice[]
+  if (d[0] === 1) {
+    levels = d[7].map((l: [number[], number[], number[], number]) => ({
+      feats: l[0], powers: l[1], skills: l[2], attr: l[3] >= 0 ? ATTRS[l[3]] : undefined,
+    }))
+  } else {
+    levels = Array.from({ length: Math.min(MAX_LEVEL, d[7]) }, emptyLevel)
+    for (const [i, feats, powers, pairs, attr] of d[8] as SparseLevel[]) {
+      if (!levels[i]) continue
+      for (let k = 0; k < pairs.length; k += 2) levels[i].skills[pairs[k]] = pairs[k + 1]
+      Object.assign(levels[i], { feats, powers, attr: attr >= 0 ? ATTRS[attr] : undefined })
+    }
+  }
+  return {
+    name: d[1], base: d[2], prestige: d[3] || null, prestigeAt: Math.max(PRESTIGE_MIN_LEVEL, d[4]), alignment: d[5],
+    attrs: Object.fromEntries(ATTRS.map((a, i) => [a, d[6][i]])) as Record<Attr, number>,
+    levels,
   }
 }
 

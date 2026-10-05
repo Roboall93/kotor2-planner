@@ -66,7 +66,8 @@ export function importBuild(code: string): { lib: Library; id: string; added: bo
   let id = ''
   let added = false
   const lib = change((l) => {
-    id = l.builds.find((s) => s.code === normal)?.id ?? ''
+    // Compare re-encoded codes: a build saved in an older link format still matches.
+    id = l.builds.find((s) => s.code === normal || encodeBuild(decodeBuild(s.code)!) === normal)?.id ?? ''
     if (!id) {
       id = newId()
       added = true
