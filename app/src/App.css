@@ -192,7 +192,6 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px
 .detail tr.bad td:first-child { box-shadow: inset 3px 0 var(--warn); }
 
 .pills { display: flex; gap: 6px; }
-.tick.open-picks:not(.current) { opacity: 0.65; }
 
 .warn-text { color: var(--warn); }
 
@@ -347,3 +346,10 @@ footer { color: var(--muted); }
 .bank-note { margin: 8px 0 0; font-size: 12.5px; color: var(--gold); }
 
 .list .nm small.dc { display: block; font-size: 11px; color: var(--muted); letter-spacing: 0.02em; }
+
+/* Choices left to make */
+.pill.todo { color: var(--gold); border-color: rgba(214, 178, 110, 0.6); cursor: pointer; padding: 2px 8px; font-size: 11px; }
+button.pill.todo:hover { border-color: var(--gold); box-shadow: 0 0 8px rgba(214, 178, 110, 0.3); color: var(--gold); }
+.stage-row .pill.todo { flex: none; cursor: inherit; }
+.todo-text { color: var(--gold); font-variant-caps: normal; letter-spacing: 0; font-weight: 500; }
+.tick.open-picks:not(.issue)::after { content: ''; position: absolute; top: 3px; left: 50%; translate: -50% 0; width: 5px; height: 5px; border-radius: 99px; border: 1px solid var(--gold); }

@@ -250,7 +250,14 @@ export default function App() {
   const stage = stages[stageIdx]
   const spent = ATTRS.reduce((t, a) => t + pointCost(build.attrs[a]), 0)
   const totalIssues = states.reduce((t, s) => t + s.issues.length, 0)
-  const totalOpen = states.reduce((t, s) => t + s.openPicks + (s.level % 4 === 0 && !build.levels[s.level - 1].attr ? 1 : 0), 0)
+  const totalOpen = stages.reduce((t, st) => t + stageOpen(build, states, st).total, 0)
+  // Open the first stage with something unchosen and bring it into view.
+  const jumpToOpen = () => {
+    const i = stages.findIndex((st) => stageOpen(build, states, st).total > 0)
+    if (i < 0) return
+    setOpenStage(i)
+    requestAnimationFrame(() => document.querySelector('.stage.open')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
   const openLevel = (level: number) => setOpenStage(stages.findIndex((st) => level >= st.start && level <= st.end))
 
   const share = async () => {
@@ -286,6 +293,18 @@ export default function App() {
             onChange={(e) => update((b) => { b.name = e.target.value })}
           />
           <button className="primary" onClick={share}>{copied ? 'Link copied' : 'Copy share link'}</button>
+          <button
+            title="Clear every choice in this build; its name and base class stay"
+            onClick={() => {
+              if (!confirm('Reset this build? Every choice is cleared; the name and base class stay. Copy the share link first if you might want it back.')) return
+              update((b) => {
+                const fresh = newBuild(b.base)
+                fresh.name = b.name
+                Object.assign(b, fresh)
+              })
+              setOpenStage(0)
+            }}
+          >Reset build</button>
           <BuildsMenu
             activeId={activeId}
             onOpen={(id) => open(setActive(id), id)}
@@ -404,12 +423,16 @@ export default function App() {
           <h2 className="col-title">
             Level-up plan
             <span className="pills">
-              {totalOpen > 0 && <span className="pill">{totalOpen} picks left</span>}
+              {totalOpen > 0 && (
+                <button className="pill todo" onClick={jumpToOpen} title="Go to the first stage with something left to choose">
+                  {plural(totalOpen, 'choice')} left
+                </button>
+              )}
               <span className={`pill ${totalIssues ? 'warn' : 'ok'}`}>{totalIssues ? `${totalIssues} rule ${totalIssues === 1 ? 'error' : 'errors'}` : 'No rule errors'}</span>
             </span>
           </h2>
 
-          <LevelStrip states={states} stage={stage} onPick={openLevel} />
+          <LevelStrip build={build} states={states} stage={stage} onPick={openLevel} />
           <HoverCard alignment={build.alignment} state={states[stage.end - 1]} />
 
           {stages.map((st, i) =>
@@ -436,7 +459,7 @@ export default function App() {
   )
 }
 
-function LevelStrip({ states, stage, onPick }: { states: LevelState[]; stage: Stage; onPick: (level: number) => void }) {
+function LevelStrip({ build, states, stage, onPick }: { build: Build; states: LevelState[]; stage: Stage; onPick: (level: number) => void }) {
   return (
     <div className="strip" role="list" aria-label="Levels">
       {states.map((s) => {
@@ -445,7 +468,7 @@ function LevelStrip({ states, stage, onPick }: { states: LevelState[]; stage: St
           <button
             key={s.level}
             role="listitem"
-            className={`tick ${s.cls.prestige ? `prestige ${s.cls.side}` : ''} ${inStage ? 'current' : ''} ${s.issues.length ? 'issue' : ''} ${s.openPicks ? 'open-picks' : ''}`}
+            className={`tick ${s.cls.prestige ? `prestige ${s.cls.side}` : ''} ${inStage ? 'current' : ''} ${s.issues.length ? 'issue' : ''} ${s.openPicks || (s.level % 4 === 0 && !build.levels[s.level - 1].attr) ? 'open-picks' : ''}`}
             title={`Level ${s.level} · ${s.cls.name} ${s.classLevel}${s.issues.length ? `\n${s.issues.join('\n')}` : ''}`}
             onClick={() => onPick(s.level)}
           >
@@ -455,6 +478,25 @@ function LevelStrip({ states, stage, onPick }: { states: LevelState[]; stage: St
       })}
     </div>
   )
+}
+
+/** Choices still to make in a stage: feat and power slots, attribute increases. */
+function stageOpen(build: Build, states: LevelState[], st: Stage) {
+  const o = { attr: 0, feats: 0, powers: 0, total: 0 }
+  for (const l of stageLevels(st)) {
+    const s = states[l - 1]
+    const c = build.levels[l - 1]
+    o.feats += Math.max(0, s.featPicks - c.feats.length)
+    o.powers += Math.max(0, s.powerPicks - c.powers.length)
+    if (l % 4 === 0 && !c.attr) o.attr++
+  }
+  o.total = o.attr + o.feats + o.powers
+  return o
+}
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+function openLabel(o: ReturnType<typeof stageOpen>) {
+  return [o.attr && plural(o.attr, 'attribute'), o.feats && plural(o.feats, 'feat'), o.powers && plural(o.powers, 'power')]
+    .filter(Boolean).join(' · ')
 }
 
 function stageIssues(states: LevelState[], st: Stage) {
@@ -470,6 +512,7 @@ function classSpan(states: LevelState[], st: Stage) {
 function StageRow({ stage: st, build, states, onOpen }: { stage: Stage; build: Build; states: LevelState[]; onOpen: () => void }) {
   const issues = stageIssues(states, st)
   const attr = build.levels[st.start - 1].attr
+  const open = stageOpen(build, states, st)
   return (
     <button className={`stage-row ${issues.length ? 'has-issues' : ''}`} onClick={onOpen}>
       <span className="range">{range(st)}</span>
@@ -479,6 +522,7 @@ function StageRow({ stage: st, build, states, onOpen }: { stage: Stage; build: B
         {stagePicks(build, 'feats', st).map(({ id }) => <span key={`f${id}`} className="chip feat" data-tip={`f:${id}`}><Icon name={featById.get(id)?.icon} size={16} />{featById.get(id)?.name}</span>)}
         {stagePicks(build, 'powers', st).map(({ id }) => <span key={`p${id}`} className="chip power" data-tip={`p:${id}`}><Icon name={powerById.get(id)?.icon} size={16} />{powerById.get(id)?.name}</span>)}
       </span>
+      {open.total > 0 && <span className="pill todo" title="Still to choose in these levels">{openLabel(open)} left</span>}
       {issues.length > 0 && <span className="dot">{issues.length}</span>}
     </button>
   )
@@ -511,7 +555,10 @@ function StageCard({ stage: st, build, states, update }: { stage: Stage; build: 
 
       {attrLevel && (
         <div className="field">
-          <label>Attribute increase at level {attrLevel}</label>
+          <label>
+            Attribute increase at level {attrLevel}
+            {!build.levels[attrLevel - 1].attr && <span className="todo-text"> · not chosen yet</span>}
+          </label>
           <div className="seg small">
             {ATTRS.map((a) => (
               <button
