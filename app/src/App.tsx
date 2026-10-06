@@ -251,6 +251,9 @@ export default function App() {
   const spent = ATTRS.reduce((t, a) => t + pointCost(build.attrs[a]), 0)
   const totalIssues = states.reduce((t, s) => t + s.issues.length, 0)
   const totalOpen = stages.reduce((t, st) => t + stageOpen(build, states, st).total, 0)
+  const anySkills = build.levels.some((l) => l.skills.some((p) => p > 0))
+  // Skill errors (overspending, rank caps, odd cross-class points) are what an INT change leaves behind.
+  const skillIssues = states.some((s) => s.issues.some((i) => /skill points|exceeds cap|cross-class ranks/.test(i)))
   // Open the first stage with something unchosen and bring it into view.
   const jumpToOpen = () => {
     const i = stages.findIndex((st) => stageOpen(build, states, st).total > 0)
@@ -429,6 +432,16 @@ export default function App() {
                 </button>
               )}
               <span className={`pill ${totalIssues ? 'warn' : 'ok'}`}>{totalIssues ? `${totalIssues} rule ${totalIssues === 1 ? 'error' : 'errors'}` : 'No rule errors'}</span>
+              {anySkills && (
+                <button
+                  className={`pill reset-skills ${skillIssues ? 'warn' : ''}`}
+                  title="Clear skill spending at every level so you can redo it (feats, powers and attributes stay)"
+                  onClick={() => {
+                    if (!confirm('Reset all skills? Skill points are cleared at every level; feats, powers and attributes stay.')) return
+                    update((b) => b.levels.forEach((l) => { l.skills = l.skills.map(() => 0) }))
+                  }}
+                >Reset all skills</button>
+              )}
             </span>
           </h2>
 

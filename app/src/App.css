@@ -353,3 +353,6 @@ button.pill.todo:hover { border-color: var(--gold); box-shadow: 0 0 8px rgba(214
 .stage-row .pill.todo { flex: none; cursor: inherit; }
 .todo-text { color: var(--gold); font-variant-caps: normal; letter-spacing: 0; font-weight: 500; }
 .tick.open-picks:not(.issue)::after { content: ''; position: absolute; top: 3px; left: 50%; translate: -50% 0; width: 5px; height: 5px; border-radius: 99px; border: 1px solid var(--gold); }
+
+.pill.reset-skills { cursor: pointer; padding: 2px 8px; font-size: 11px; }
+.pill.reset-skills.warn { color: var(--dark); border-color: var(--dark); }
