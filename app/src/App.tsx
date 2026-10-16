@@ -283,8 +283,11 @@ export default function App() {
       while (b.levels.length < n) b.levels.push(emptyLevel())
       b.levels.length = n
       const g = GAMES[b.game]
-      if (!g.secondClassRequired && n < g.secondClassMinLevel) b.prestige = null
-      b.prestigeAt = Math.min(b.prestigeAt, Math.max(g.secondClassMinLevel, n))
+      // An optional prestige class can't start past the plan's end; Jedi training stays put.
+      if (!g.secondClassRequired) {
+        if (n < g.secondClassMinLevel) b.prestige = null
+        b.prestigeAt = Math.min(b.prestigeAt, Math.max(g.secondClassMinLevel, n))
+      }
     }, { reflow: true })
 
   // Switching games opens your latest build for that game, or starts one.
@@ -439,14 +442,16 @@ export default function App() {
               <label className="inline">
                 Becomes a Jedi at level
                 <input
-                  type="number" min={game.secondClassMinLevel} max={Math.max(game.secondClassMinLevel, build.levels.length)} value={build.prestigeAt}
+                  type="number" min={game.secondClassMinLevel} max={game.secondClassMaxLevel} value={build.prestigeAt}
                   onChange={(e) => update((b) => {
-                    b.prestigeAt = Math.max(game.secondClassMinLevel, Math.min(game.maxLevel, +e.target.value || game.secondClassDefaultLevel))
+                    b.prestigeAt = Math.max(game.secondClassMinLevel, Math.min(game.secondClassMaxLevel, +e.target.value || game.secondClassDefaultLevel))
                   }, { reflow: true })}
                 />
               </label>
               <p className="note">
-                {build.prestigeAt > build.levels.length ? 'Training comes after the end of this plan.' : 'Every level from training on is a Jedi level.'}
+                {build.prestigeAt > build.levels.length
+                  ? 'Training comes after the end of this plan.'
+                  : `Taris caps you at level ${game.secondClassMaxLevel - 1}, so training is level ${game.secondClassMaxLevel} at the latest.`}
               </p>
             </div>
           )}

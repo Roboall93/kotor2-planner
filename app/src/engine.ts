@@ -106,6 +106,7 @@ export interface GameProfile {
   secondClass: 'prestige' | 'jedi'
   secondClassRequired: boolean
   secondClassMinLevel: number
+  secondClassMaxLevel: number
   secondClassDefaultLevel: number
   chaReducesOppositeCost: boolean // StrategyWiki documents this for KOTOR II only
   classCodes: string[] // share-link class order; part of the link format
@@ -128,6 +129,7 @@ export const GAMES: Record<GameId, GameProfile> = {
     secondClass: 'prestige',
     secondClassRequired: false,
     secondClassMinLevel: 16,
+    secondClassMaxLevel: 50,
     secondClassDefaultLevel: 16,
     chaReducesOppositeCost: true,
     classCodes: ['jgd', 'jcn', 'jsn', 'jwm', 'jma', 'jwa', 'sma', 'sld', 'sas'],
@@ -150,8 +152,11 @@ export const GAMES: Record<GameId, GameProfile> = {
     },
     secondClass: 'jedi',
     secondClassRequired: true,
+    // Taris caps you at level 8 and training gives a Jedi level, so the first Jedi
+    // level is the 9th at the latest (earlier if you reach Dantooine under-levelled).
     secondClassMinLevel: 2,
-    secondClassDefaultLevel: 8, // a typical level on reaching Dantooine
+    secondClassMaxLevel: 9,
+    secondClassDefaultLevel: 9,
     chaReducesOppositeCost: false,
     classCodes: ['sol', 'sct', 'scd', 'jgd', 'jcn', 'jsn'],
     iconDir: 'icons-k1',
@@ -613,7 +618,7 @@ function decodeBinary(bytes: Uint8Array): Build | null {
   }
   return {
     game: gameId, name, base, prestige,
-    prestigeAt: Math.max(g.secondClassMinLevel, prestigeAt), alignment: Math.min(100, alignment), attrs, levels,
+    prestigeAt: Math.min(g.secondClassMaxLevel, Math.max(g.secondClassMinLevel, prestigeAt)), alignment: Math.min(100, alignment), attrs, levels,
   }
 }
 
