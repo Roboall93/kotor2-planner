@@ -1,9 +1,12 @@
-"""Extract 2DA rule tables and referenced strings from a KOTOR2 install.
+"""Extract 2DA rule tables and referenced strings from a KOTOR I or II install.
 
-Usage: python tools/extract_2da.py "<KOTOR2 install dir>" raw/
+Usage: python tools/extract_2da.py "<install dir>" <out dir>
+  e.g. ... "E:/SteamLibrary/steamapps/common/Knights of the Old Republic II" raw
+       ... "E:/SteamLibrary/steamapps/common/swkotor" raw-k1
 
-Reads chitin.key -> 2DA.bif, writes each 2DA as CSV-ish JSON (raw/<name>.json),
-lets files in override/ win, and dumps dialog.tlk to raw/tlk.json.
+Reads chitin.key -> 2DA.bif, then applies patch.erf (KOTOR I ships updated
+tables there, e.g. skills.2da) and override/, in the game's own priority order.
+Writes each 2DA as JSON (<out>/<name>.json) and dialog.tlk to <out>/tlk.json.
 """
 import json
 import os
@@ -39,6 +42,20 @@ def read_bif_resources(path):
     for i in range(var_count):
         rid, roff, rsize, _rtype = struct.unpack_from("<4I", data, off + i * 16)
         out[rid & 0xFFFFF] = data[roff:roff + rsize]
+    return out
+
+
+def read_erf_2das(path):
+    """2DA resources inside an ERF archive (patch.erf)."""
+    data = open(path, "rb").read()
+    count, off_keys, off_res = struct.unpack_from("<I4xII", data, 16)
+    out = {}
+    for i in range(count):
+        resref = data[off_keys + i * 24:off_keys + i * 24 + 16].rstrip(b"\0").decode("ascii").lower()
+        restype = struct.unpack_from("<H", data, off_keys + i * 24 + 20)[0]
+        if restype == RES_2DA:
+            off, size = struct.unpack_from("<II", data, off_res + i * 8)
+            out[resref] = data[off:off + size]
     return out
 
 
@@ -126,6 +143,11 @@ def main(game, outdir):
         if bif_idx not in cache:
             cache[bif_idx] = read_bif_resources(os.path.join(game, bifs[bif_idx]))
         tables[resref] = cache[bif_idx][res_idx]
+    patch = os.path.join(game, "patch.erf")
+    if os.path.isfile(patch):
+        for name, buf in read_erf_2das(patch).items():
+            tables[name] = buf
+            print("patch.erf:", name)
     override = os.path.join(game, "override")
     for f in os.listdir(override) if os.path.isdir(override) else []:
         if f.lower().endswith(".2da"):

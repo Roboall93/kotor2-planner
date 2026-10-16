@@ -2,6 +2,7 @@ node_modules/
 dist/
 # Raw game extraction stays local; only the trimmed rules JSON is committed.
 raw/
+raw-k1/
 __pycache__/
 
 # Local tooling
