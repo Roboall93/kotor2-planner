@@ -110,7 +110,7 @@ function BuildsMenu({ activeId, onOpen, onNew, onDuplicate, onDelete }: {
               )
             })}
           </ul>
-          <p className="note">Saved in this browser only. Opening a share link adds it here instead of replacing your work.</p>
+          <p className="note">Saved in this browser only.</p>
         </div>
       )}
     </div>
@@ -309,7 +309,7 @@ export default function App() {
             ))}
           </div>
           <h1>{game.title} Character Planner</h1>
-          <p className="sub">{game.subtitle} · rules read from the game's own data tables</p>
+          <p className="sub">{game.subtitle}</p>
         </div>
         <div className="top-actions">
           <input
@@ -320,9 +320,8 @@ export default function App() {
           />
           <button className="primary" onClick={share}>{copied ? 'Link copied' : 'Copy share link'}</button>
           <button
-            title="Clear every choice in this build; its name and base class stay"
             onClick={() => {
-              if (!confirm('Reset this build? Every choice is cleared; the name and base class stay. Copy the share link first if you might want it back.')) return
+              if (!confirm('Clear every choice in this build? The name and class are kept.')) return
               update((b) => {
                 const fresh = newBuild(b.game, b.base)
                 fresh.name = b.name
@@ -344,7 +343,7 @@ export default function App() {
             }}
             onDelete={(id) => {
               const s = readLibrary().builds.find((x) => x.id === id)!
-              if (!confirm(`Delete "${describe(s).name}"? This can't be undone; copy its share link first if you might want it back.`)) return false
+              if (!confirm(`Delete "${describe(s).name}"? This can't be undone.`)) return false
               const l = removeBuild(id)
               if (id === activeId) open(l, l.activeId)
               return true
@@ -387,7 +386,7 @@ export default function App() {
                 <span className="mod">{signed(mod(build.attrs[a]))}</span>
               </div>
             ))}
-            <p className="note">Starting scores. 1 point per step up to 14, 2 for 15–16, 3 for 17–18.</p>
+            <p className="note">Each point costs 1 up to 14, 2 up to 16 and 3 up to 18.</p>
           </div>
 
           {game.secondClass === 'prestige' ? (
@@ -417,12 +416,11 @@ export default function App() {
               <p className="note">
                 {build.levels.length < game.secondClassMinLevel
                   ? `Plan to level ${game.secondClassMinLevel}+ to unlock.`
-                  : `You must reach level ${game.secondClassMinLevel - 1} first, so the earliest prestige level is ${game.secondClassMinLevel}. Needs alignment 75+ (light) or 25 or below (dark).`}
+                  : `From level ${game.secondClassMinLevel}. Needs alignment 75+ (light) or 25 or below (dark).`}
               </p>
               {build.prestige && !prestigeAlignmentOk(classById[build.prestige], build.alignment) && (
                 <p className="note warn-text">
-                  {classById[build.prestige].name} needs {classById[build.prestige].side === 'light' ? '75 or higher' : '25 or lower'} alignment;
-                  the slider is at {build.alignment}.
+                  Needs alignment {classById[build.prestige].side === 'light' ? '75 or higher' : '25 or lower'} (now {build.alignment}).
                 </p>
               )}
             </div>
@@ -448,8 +446,7 @@ export default function App() {
                 />
               </label>
               <p className="note">
-                Your {classById[build.base].name} levels end at Jedi training on Dantooine; every level after that is a Jedi level.
-                {build.prestigeAt > build.levels.length && ' (After the end of this plan.)'}
+                {build.prestigeAt > build.levels.length ? 'Training comes after the end of this plan.' : 'Every level from training on is a Jedi level.'}
               </p>
             </div>
           )}
@@ -461,7 +458,7 @@ export default function App() {
               onChange={(e) => update((b) => { b.alignment = +e.target.value })}
             />
             <div className="align-labels"><span>Dark</span><span>Light</span></div>
-            <p className="note">Adjusts light and dark power costs.</p>
+            <p className="note">Affects light and dark power costs.</p>
           </div>
 
           <div className="card">
@@ -478,7 +475,7 @@ export default function App() {
             Level-up plan
             <span className="pills">
               {totalOpen > 0 && (
-                <button className="pill todo" onClick={jumpToOpen} title="Go to the first stage with something left to choose">
+                <button className="pill todo" onClick={jumpToOpen} title="Go to the first unfinished stage">
                   {plural(totalOpen, 'choice')} left
                 </button>
               )}
@@ -486,9 +483,8 @@ export default function App() {
               {anySkills && (
                 <button
                   className={`pill reset-skills ${skillIssues ? 'warn' : ''}`}
-                  title="Clear skill spending at every level so you can redo it (feats, powers and attributes stay)"
                   onClick={() => {
-                    if (!confirm('Reset all skills? Skill points are cleared at every level; feats, powers and attributes stay.')) return
+                    if (!confirm('Clear skill points at every level? Feats, powers and attributes are kept.')) return
                     update((b) => b.levels.forEach((l) => { l.skills = l.skills.map(() => 0) }))
                   }}
                 >Reset all skills</button>
@@ -514,10 +510,9 @@ export default function App() {
       </main>
 
       <footer>
-        Fan-made, non-commercial tool. Not affiliated with or endorsed by Lucasfilm, Disney, Obsidian or Aspyr.
-        Feat and Force power icons are from Star Wars: Knights of the Old Republic {game.id === 'k1' ? '' : 'II '}and remain © Lucasfilm Ltd.;
-        used here for reference only. Values marked ? are not yet confirmed in game.
-        Visits and a few button clicks are counted anonymously (GoatCounter, no cookies); your builds stay in your browser.
+        Fan-made and non-commercial. Not affiliated with Lucasfilm, Disney, Obsidian or Aspyr.
+        Icons and descriptions © Lucasfilm Ltd. Values marked ? aren't confirmed in game yet.
+        Anonymous visit counts by GoatCounter, no cookies.
       </footer>
     </div>
   )
@@ -586,7 +581,7 @@ function StageRow({ stage: st, build, states, onOpen }: { stage: Stage; build: B
         {stagePicks(build, 'feats', st).map(({ id }) => <span key={`f${id}`} className="chip feat" data-tip={`f:${id}`}><Icon name={featById.get(id)?.icon} size={16} />{featById.get(id)?.name}</span>)}
         {stagePicks(build, 'powers', st).map(({ id }) => <span key={`p${id}`} className="chip power" data-tip={`p:${id}`}><Icon name={powerById.get(id)?.icon} size={16} />{powerById.get(id)?.name}</span>)}
       </span>
-      {open.total > 0 && <span className="pill todo" title="Still to choose in these levels">{openLabel(open)} left</span>}
+      {open.total > 0 && <span className="pill todo">{openLabel(open)} left</span>}
       {issues.length > 0 && <span className="dot">{issues.length}</span>}
     </button>
   )
@@ -633,7 +628,7 @@ function StageCard({ stage: st, build, states, update }: { stage: Stage; build: 
             ))}
           </div>
           {build.levels[attrLevel - 1].attr === 'int' && (
-            <p className="note">Raises skill points from level {attrLevel} on, not before.</p>
+            <p className="note">Adds skill points from level {attrLevel} on.</p>
           )}
         </div>
       )}
@@ -740,13 +735,13 @@ function StageSkills({ stage: st, build, states, update }: { stage: Stage; build
           {prevStage && prevStage.start > 1 && (
             <button
               className="link"
-              title="Copy the previous stage's skill spending per level-up. After an INT increase, add the extra points here; the next stage's repeat will include them."
+              title="Spend skill points the same way as the previous stage"
               onClick={() => apply(repeatSkillGains(build, states, prevStage, st))}
             >Repeat previous stage</button>
           )}
           <button
             className="link"
-            title="Clear this stage's skill spending, back to the ranks you entered it with."
+            title="Clear this stage's skill points"
             disabled={!hasPoints}
             onClick={() => update((b) => stageLevels(st).forEach((l) => { b.levels[l - 1].skills = rules.skills.map(() => 0) }))}
           >Reset</button>
@@ -774,12 +769,11 @@ function StageSkills({ stage: st, build, states, update }: { stage: Stage; build
         <p className="bank-note">
           {isLastStage
             ? `${banked} points unspent at the end of the plan.`
-            : `${banked} points banked for the next stage. Leftover points carry over, e.g. to spend after prestiging.`}
+            : `${banked} unspent points carry over to the next stage.`}
         </p>
       )}
       <p className="note">
-        Ranks shown are at level {st.end}. Points are spent level by level, capped at level + 3
-        ({Math.floor((st.end + 3) / 2)} for cross-class at level {st.end}).
+        Ranks at level {st.end}. Maximum {st.end + 3}, or {Math.floor((st.end + 3) / 2)} cross-class.
       </p>
     </div>
   )
@@ -896,8 +890,8 @@ function Summary({ state: s, before, build }: { state: LevelState; before?: Leve
           <div className="stats">
             <Stat label="Vitality" value={s.hp} />
             <Stat label="Force" value={s.fp} />
-            <Stat label="Defense" value={s.defense} flag="Base defense: 10 + DEX + class bonus, before armor and items." />
-            <Stat label="Attack" value={signed(s.bab)} flag="Base attack bonus from classes.2da, which gives every class the full table. Not yet confirmed in game." />
+            <Stat label="Defense" value={s.defense} flag="Before armor and items." />
+            <Stat label="Attack" value={signed(s.bab)} flag={game.id === 'k2' ? "Base attack bonus. KOTOR II's data gives every class the full bonus; not confirmed in game." : undefined} />
             <Stat label="Fortitude" value={signed(s.fort)} />
             <Stat label="Reflex" value={signed(s.ref)} />
             <Stat label="Will" value={signed(s.will)} />
@@ -957,7 +951,7 @@ function Summary({ state: s, before, build }: { state: LevelState; before?: Leve
             )
           })}
           {powers.length === 0 && <p className="note">No Force powers yet.</p>}
-          {powers.length > 0 && <p className="note">Tiered powers show their highest tier; pips count the tiers owned. Hover for the full chain.</p>}
+          {powers.length > 0 && <p className="note">Dots show how many tiers you have.</p>}
         </>
       )}
     </div>
