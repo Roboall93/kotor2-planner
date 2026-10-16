@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  ATTRS, ATTR_NAMES, BASE_CLASSES, MAX_LEVEL, POINT_BUY, PRESTIGE_CLASSES, PRESTIGE_MIN_LEVEL, PRESTIGE_REQUIRED_LEVEL,
+  ATTRS, ATTR_NAMES, BASE_CLASSES, GAMES, MAX_LEVEL, POINT_BUY, SECOND_CLASSES, game, setGame, type GameId,
   EXILE_FEATS, classById, dcLabel, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
   placePicks, placeSkills, pointCost, removeSkillRank, repeatSkillGains, powerById, powerCost, prestigeAlignmentOk, reflowSkills, rules, setStagePicks, simulate,
   stageGains, stageLevels, stagePicks, stagesOf,
@@ -37,7 +37,7 @@ function Icon({ name, size = 32 }: { name?: string | null; size?: number }) {
   if (!name || failed) return null
   return (
     <img
-      className="icon" src={`${import.meta.env.BASE_URL}icons/${name}.png`} alt="" width={size} height={size}
+      className="icon" src={`${import.meta.env.BASE_URL}${game.iconDir}/${name}.png`} alt="" width={size} height={size}
       loading="lazy" onError={() => setFailed(true)}
     />
   )
@@ -202,6 +202,11 @@ export default function App() {
   const [boot] = useState(startup)
   const [activeId, setActiveId] = useState(boot.id)
   const [build, setBuild] = useState<Build>(() => decodeBuild(codeOf(boot.lib, boot.id))!)
+  setGame(build.game) // engine tables follow the build on screen (idempotent)
+  useEffect(() => {
+    document.title = `${GAMES[build.game].title} Character Planner`
+    document.documentElement.dataset.game = build.game // theme: see :root[data-game] in App.css
+  }, [build.game])
   const [openStage, setOpenStage] = useState(0)
   const [copied, setCopied] = useState(false)
   const states = useMemo(() => simulate(build), [build])
@@ -277,16 +282,34 @@ export default function App() {
     update((b) => {
       while (b.levels.length < n) b.levels.push(emptyLevel())
       b.levels.length = n
-      if (n < PRESTIGE_MIN_LEVEL) b.prestige = null
-      b.prestigeAt = Math.min(b.prestigeAt, Math.max(PRESTIGE_MIN_LEVEL, n))
+      const g = GAMES[b.game]
+      if (!g.secondClassRequired && n < g.secondClassMinLevel) b.prestige = null
+      b.prestigeAt = Math.min(b.prestigeAt, Math.max(g.secondClassMinLevel, n))
     }, { reflow: true })
 
+  // Switching games opens your latest build for that game, or starts one.
+  const switchGame = (id: GameId) => {
+    if (id === build.game) return
+    const latest = readLibrary().builds
+      .filter((s) => decodeBuild(s.code)?.game === id)
+      .sort((a, b) => b.updated - a.updated)[0]
+    if (latest) open(setActive(latest.id), latest.id)
+    else { const r = addBuild(newBuild(id)); open(r.lib, r.id) }
+  }
+
   return (
-    <div className="app">
+    <div className="app" data-game={build.game}>
       <header className="top">
-        <div>
-          <h1>KOTOR II Character Planner</h1>
-          <p className="sub">The Sith Lords · rules read from the game's own data tables</p>
+        <div className="title-block">
+          <div className="game-switch" role="tablist" aria-label="Game">
+            {(['k1', 'k2'] as const).map((id) => (
+              <button key={id} role="tab" aria-selected={build.game === id} className={build.game === id ? 'on' : ''} onClick={() => switchGame(id)}>
+                {GAMES[id].title}
+              </button>
+            ))}
+          </div>
+          <h1>{game.title} Character Planner</h1>
+          <p className="sub">{game.subtitle} · rules read from the game's own data tables</p>
         </div>
         <div className="top-actions">
           <input
@@ -301,7 +324,7 @@ export default function App() {
             onClick={() => {
               if (!confirm('Reset this build? Every choice is cleared; the name and base class stay. Copy the share link first if you might want it back.')) return
               update((b) => {
-                const fresh = newBuild(b.base)
+                const fresh = newBuild(b.game, b.base)
                 fresh.name = b.name
                 Object.assign(b, fresh)
               })
@@ -311,7 +334,7 @@ export default function App() {
           <BuildsMenu
             activeId={activeId}
             onOpen={(id) => open(setActive(id), id)}
-            onNew={() => { const r = addBuild(newBuild()); open(r.lib, r.id); track('new-build') }}
+            onNew={() => { const r = addBuild(newBuild(build.game)); open(r.lib, r.id); track('new-build') }}
             onDuplicate={(id) => {
               const s = readLibrary().builds.find((x) => x.id === id)!
               const b = decodeBuild(s.code)!
@@ -344,8 +367,8 @@ export default function App() {
               ))}
             </div>
             <p className="note">
-              {classById[build.base].hitDie} vitality · {classById[build.base].forceDie} Force ·{' '}
-              {classById[build.base].skillPointBase} skill points per level
+              {classById[build.base].hitDie} vitality · {classById[build.base].forceUser ? `${classById[build.base].forceDie} Force` : 'no Force'} ·{' '}
+              {game.skillPoints(classById[build.base], 2, 0)} skill points per level
             </p>
           </div>
 
@@ -367,41 +390,69 @@ export default function App() {
             <p className="note">Starting scores. 1 point per step up to 14, 2 for 15–16, 3 for 17–18.</p>
           </div>
 
-          <div className="card">
-            <h2>Prestige class</h2>
-            <select
-              value={build.prestige ?? ''}
-              disabled={build.levels.length < PRESTIGE_MIN_LEVEL}
-              onChange={(e) => update((b) => { b.prestige = e.target.value || null }, { reflow: true })}
-            >
-              <option value="">None</option>
-              {PRESTIGE_CLASSES.map((c) => (
-                <option key={c.id} value={c.id}>{c.name} ({c.side} side)</option>
-              ))}
-            </select>
-            {build.prestige && (
+          {game.secondClass === 'prestige' ? (
+            <div className="card">
+              <h2>Prestige class</h2>
+              <select
+                value={build.prestige ?? ''}
+                disabled={build.levels.length < game.secondClassMinLevel}
+                onChange={(e) => update((b) => { b.prestige = e.target.value || null }, { reflow: true })}
+              >
+                <option value="">None</option>
+                {SECOND_CLASSES.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.side} side)</option>
+                ))}
+              </select>
+              {build.prestige && (
+                <label className="inline">
+                  First prestige level
+                  <input
+                    type="number" min={game.secondClassMinLevel} max={build.levels.length} value={build.prestigeAt}
+                    onChange={(e) => update((b) => {
+                      b.prestigeAt = Math.max(game.secondClassMinLevel, Math.min(b.levels.length, +e.target.value || game.secondClassMinLevel))
+                    }, { reflow: true })}
+                  />
+                </label>
+              )}
+              <p className="note">
+                {build.levels.length < game.secondClassMinLevel
+                  ? `Plan to level ${game.secondClassMinLevel}+ to unlock.`
+                  : `You must reach level ${game.secondClassMinLevel - 1} first, so the earliest prestige level is ${game.secondClassMinLevel}. Needs alignment 75+ (light) or 25 or below (dark).`}
+              </p>
+              {build.prestige && !prestigeAlignmentOk(classById[build.prestige], build.alignment) && (
+                <p className="note warn-text">
+                  {classById[build.prestige].name} needs {classById[build.prestige].side === 'light' ? '75 or higher' : '25 or lower'} alignment;
+                  the slider is at {build.alignment}.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="card">
+              <h2>Jedi training</h2>
+              <div className="seg">
+                {SECOND_CLASSES.map((c) => (
+                  <button
+                    key={c.id}
+                    className={build.prestige === c.id ? 'on' : ''}
+                    onClick={() => update((b) => { b.prestige = c.id }, { reflow: true })}
+                  >{c.name.replace('Jedi ', '')}</button>
+                ))}
+              </div>
               <label className="inline">
-                First prestige level
+                Becomes a Jedi at level
                 <input
-                  type="number" min={PRESTIGE_MIN_LEVEL} max={build.levels.length} value={build.prestigeAt}
+                  type="number" min={game.secondClassMinLevel} max={Math.max(game.secondClassMinLevel, build.levels.length)} value={build.prestigeAt}
                   onChange={(e) => update((b) => {
-                    b.prestigeAt = Math.max(PRESTIGE_MIN_LEVEL, Math.min(b.levels.length, +e.target.value || PRESTIGE_MIN_LEVEL))
+                    b.prestigeAt = Math.max(game.secondClassMinLevel, Math.min(game.maxLevel, +e.target.value || game.secondClassDefaultLevel))
                   }, { reflow: true })}
                 />
               </label>
-            )}
-            <p className="note">
-              {build.levels.length < PRESTIGE_MIN_LEVEL
-                ? `Plan to level ${PRESTIGE_MIN_LEVEL}+ to unlock.`
-                : `You must reach level ${PRESTIGE_REQUIRED_LEVEL} first, so the earliest prestige level is ${PRESTIGE_MIN_LEVEL}. Needs alignment 75+ (light) or 25 or below (dark).`}
-            </p>
-            {build.prestige && !prestigeAlignmentOk(classById[build.prestige], build.alignment) && (
-              <p className="note warn-text">
-                {classById[build.prestige].name} needs {classById[build.prestige].side === 'light' ? '75 or higher' : '25 or lower'} alignment;
-                the slider is at {build.alignment}.
+              <p className="note">
+                Your {classById[build.base].name} levels end at Jedi training on Dantooine; every level after that is a Jedi level.
+                {build.prestigeAt > build.levels.length && ' (After the end of this plan.)'}
               </p>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="card">
             <h2>Alignment <span className="pill">{build.alignment}</span></h2>
@@ -464,7 +515,7 @@ export default function App() {
 
       <footer>
         Fan-made, non-commercial tool. Not affiliated with or endorsed by Lucasfilm, Disney, Obsidian or Aspyr.
-        Feat and Force power icons are from Star Wars: Knights of the Old Republic II and remain © Lucasfilm Ltd.;
+        Feat and Force power icons are from Star Wars: Knights of the Old Republic {game.id === 'k1' ? '' : 'II '}and remain © Lucasfilm Ltd.;
         used here for reference only. Values marked ? are not yet confirmed in game.
         Visits and a few button clicks are counted anonymously (GoatCounter, no cookies); your builds stay in your browser.
       </footer>
@@ -481,7 +532,7 @@ function LevelStrip({ build, states, stage, onPick }: { build: Build; states: Le
           <button
             key={s.level}
             role="listitem"
-            className={`tick ${s.cls.prestige ? `prestige ${s.cls.side}` : ''} ${inStage ? 'current' : ''} ${s.issues.length ? 'issue' : ''} ${s.openPicks || (s.level % 4 === 0 && !build.levels[s.level - 1].attr) ? 'open-picks' : ''}`}
+            className={`tick ${s.cls.prestige || s.cls.jedi ? `prestige ${s.cls.side ?? 'jedi'}` : ''} ${inStage ? 'current' : ''} ${s.issues.length ? 'issue' : ''} ${s.openPicks || (s.level % 4 === 0 && !build.levels[s.level - 1].attr) ? 'open-picks' : ''}`}
             title={`Level ${s.level} · ${s.cls.name} ${s.classLevel}${s.issues.length ? `\n${s.issues.join('\n')}` : ''}`}
             onClick={() => onPick(s.level)}
           >
@@ -557,7 +608,7 @@ function StageCard({ stage: st, build, states, update }: { stage: Stage; build: 
         <div>
           <h3>{range(st)}</h3>
           <span className="lv-class">{classSpan(states, st)}</span>
-          {build.prestige && st.start === build.prestigeAt && <span className="pill gold">Prestige begins</span>}
+          {build.prestige && st.start === build.prestigeAt && <span className="pill gold">{game.secondClass === 'jedi' ? 'Jedi training' : 'Prestige begins'}</span>}
         </div>
         <button className="link" onClick={() => setDetail(!detail)}>{detail ? 'Hide' : 'Show'} level by level</button>
       </div>
@@ -589,7 +640,7 @@ function StageCard({ stage: st, build, states, update }: { stage: Stage; build: 
 
       <StagePicks kind="feats" stage={st} build={build} states={states} update={update} />
       <StagePicks kind="powers" stage={st} build={build} states={states} update={update} />
-      {st.start === 1 && <p className="note">The Exile starts cut off from the Force, so level 1 has no power picks.</p>}
+      {st.start === 1 && game.noForceAtLevel1 && <p className="note">The Exile starts cut off from the Force, so level 1 has no power picks.</p>}
       <StageSkills stage={st} build={build} states={states} update={update} />
 
       {detail && <LevelDetail stage={st} build={build} states={states} />}

@@ -1,8 +1,10 @@
 """Extract the feat and Force power icons the planner uses from a KOTOR2 install.
 
-Usage: python tools/extract_icons.py "<KOTOR2 install dir>" app/src/data/rules.json app/public/icons
+Usage: python tools/extract_icons.py "<install dir>" <rules json> <out dir>
+  ... "<KOTOR II dir>" app/src/data/k2.json app/public/icons
+  ... "<KOTOR I dir>"  app/src/data/k1.json app/public/icons-k1
 
-Only icons named by rules.json are written (as PNG). The icons are Lucasfilm's
+Only icons named by the rules file are written (as PNG). The icons are Lucasfilm's
 artwork, so they live in their own folder: deleting app/public/icons makes the
 app fall back to plain text, no code change needed.
 """

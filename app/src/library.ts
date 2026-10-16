@@ -1,7 +1,7 @@
 // "My builds": every build is kept in this browser's localStorage. Nothing leaves
 // the device. Each operation re-reads storage before writing, so two open tabs
 // don't overwrite each other's builds.
-import { classById, decodeBuild, encodeBuild, newBuild, type Build } from './engine'
+import { GAMES, dataFor, decodeBuild, encodeBuild, newBuild, type Build } from './engine'
 
 export interface SavedBuild {
   id: string
@@ -105,9 +105,10 @@ export const removeBuild = (id: string) => change((l) => { l.builds = l.builds.f
 /** Label for the list: the build's name, or its class path when unnamed. */
 export function describe(s: SavedBuild) {
   const b = decodeBuild(s.code)!
+  const { classById } = dataFor(b.game)
   const cls = classById[b.base].name.replace('Jedi ', '')
   const path = b.prestige ? `${cls} → ${classById[b.prestige].name}` : cls
-  return { name: b.name.trim() || `Untitled ${cls}`, meta: `${path} · level ${b.levels.length}` }
+  return { name: b.name.trim() || `Untitled ${cls}`, meta: `${GAMES[b.game].title} · ${path} · level ${b.levels.length}` }
 }
 
 export function ago(ms: number) {

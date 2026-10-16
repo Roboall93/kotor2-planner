@@ -1,4 +1,4 @@
-"""Cross-check app/src/data/rules.json against a StrategyWiki-derived workbook.
+"""Cross-check the KOTOR II rules (app/src/data/k2.json) against a StrategyWiki-derived workbook.
 
 Usage: python tools/compare_wiki.py <KOTOR2_Classes_Feats_Powers.xlsx>
 
@@ -12,7 +12,7 @@ from collections import defaultdict
 
 import openpyxl
 
-RULES = json.load(open("app/src/data/rules.json", encoding="utf-8"))
+RULES = json.load(open("app/src/data/k2.json", encoding="utf-8"))
 CLS = {c["name"]: c for c in RULES["classes"]}
 FEAT = {f["name"].lower(): f for f in RULES["feats"]}
 POWER = {p["name"].lower(): p for p in RULES["powers"]}

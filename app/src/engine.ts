@@ -1,4 +1,5 @@
-import rulesJson from './data/rules.json'
+import k1Json from './data/k1.json'
+import k2Json from './data/k2.json'
 
 export interface ClassDef {
   id: string
@@ -7,7 +8,9 @@ export interface ClassDef {
   hitDie: number
   forceDie: number
   skillPointBase: number
-  prestige: boolean
+  prestige: boolean // KOTOR II prestige class
+  jedi: boolean // KOTOR I Jedi class, taken at Jedi training
+  forceUser: boolean
   side: 'light' | 'dark' | null
   bab: number[]
   fort: number[]
@@ -57,44 +60,141 @@ interface Rules {
   powers: PowerDef[]
 }
 
-export const rules = rulesJson as unknown as Rules
-export const classById = Object.fromEntries(rules.classes.map((c) => [c.id, c])) as Record<string, ClassDef>
-export const featById = new Map(rules.feats.map((f) => [f.id, f]))
-export const powerById = new Map(rules.powers.map((p) => [p.id, p]))
-
 export const ATTRS = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const
 export type Attr = (typeof ATTRS)[number]
 export const ATTR_NAMES: Record<Attr, string> = {
   str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma',
 }
 
-// --- Engine constants not stored in 2DAs ---------------------------------
-// Verified against the user's Jedi Sentinel saves (levels 3-8):
-//   vitality = sum(hit dice) + CON mod * level + 25 (War Veteran feat, Exile only)
-//   force    = sum(force die + WIS mod) over levels 2+ , + 40 (Force Sensitive, granted at level 2)
-//   skill points = max(1, base + INT mod), x4 at level 1; cross-class ranks cost 2
-//   the Exile picks no Force powers at level 1 (classpowergain's level-1 row is skipped)
-//   skill ranks never exceed level + 3 (cross-class: half); unspent points carry over
-//   to the next level-up (players bank them, e.g. to spend after prestiging)
-export const POINT_BUY = 30
-export const MAX_LEVEL = 50
-// You must already be level 15 to choose a prestige class, so its first level is
-// your 16th level-up at the earliest.
-export const PRESTIGE_REQUIRED_LEVEL = 15
-// Default plan length: about where a normal playthrough ends without grinding.
-export const DEFAULT_PLAN_LEVEL = 30
-export const PRESTIGE_MIN_LEVEL = PRESTIGE_REQUIRED_LEVEL + 1
-const WAR_VETERAN_HP = 25
-const FORCE_SENSITIVE_FP = 40
-const FORCE_SENSITIVE_LEVEL = 2
-// Feats the Exile always has that are story-granted rather than class-granted.
-export const EXILE_FEATS = [206] // War Veteran
-
-export const BASE_CLASSES = rules.classes.filter((c) => !c.prestige)
-// Any base class can take any prestige class; only alignment gates it in game.
-export const PRESTIGE_CLASSES = rules.classes.filter((c) => c.prestige)
-
 export const mod = (score: number) => Math.floor((score - 10) / 2)
+
+// --- Games ---------------------------------------------------------------
+// Everything that differs between KOTOR I and II. Rules data comes from each
+// game's 2DAs (tools/build_rules.py); the rest was checked against real saves:
+//
+// KOTOR II (Jedi Sentinel saves, levels 3-8):
+//   vitality = sum(hit dice) + CON mod * level + 25 (War Veteran, the Exile's story feat)
+//   force    = (force die + WIS mod) per level from level 2, + 40 (Force Sensitive, level 2)
+//   skill points = max(1, base + INT mod), x4 at level 1
+//   the Exile picks no Force powers at level 1 (classpowergain's level-1 row is skipped)
+//   prestige class from level 16 (you must already be 15), optional
+// KOTOR I (Soldier 1 and Scoundrel 7 / Jedi Guardian 4 saves, plus a Soldier 2 sheet):
+//   vitality = sum(hit dice) + CON mod * level (no story bonus)
+//   force    = (force die + WIS mod + CHA mod) per Jedi level, + 40 (Force Sensitive, Jedi 1)
+//   skill points: classes.2da lists double the real base. At creation (base/2 + INT) x 4,
+//   at least 4; each level-up base/2 + half the INT modifier (rounded down), at least 1
+//   (matches both saves and the KOTOR wiki's Intelligence table)
+//   every character starts as Soldier/Scout/Scoundrel and becomes a Jedi at training
+// Both: 30-point attribute buy, ranks capped at level + 3 (cross-class half, 2 points
+// each), unspent skill points carry over, and the feat/power picks come from the 2DAs.
+
+export type GameId = 'k1' | 'k2'
+
+export interface GameProfile {
+  id: GameId
+  title: string // "KOTOR II"
+  subtitle: string
+  rules: Rules
+  maxLevel: number
+  defaultPlanLevel: number
+  storyFeats: number[] // feats the main character always has
+  storyHp: number
+  forceAbilities: Attr[] // modifiers added to Force points per Force-using level
+  noForceAtLevel1: boolean // the Exile: no Force points or power picks at level 1
+  skillPoints: (cls: ClassDef, level: number, intMod: number) => number
+  // The second class: KOTOR II's optional prestige class, KOTOR I's Jedi training.
+  secondClass: 'prestige' | 'jedi'
+  secondClassRequired: boolean
+  secondClassMinLevel: number
+  secondClassDefaultLevel: number
+  chaReducesOppositeCost: boolean // StrategyWiki documents this for KOTOR II only
+  classCodes: string[] // share-link class order; part of the link format
+  iconDir: string
+}
+
+export const GAMES: Record<GameId, GameProfile> = {
+  k2: {
+    id: 'k2',
+    title: 'KOTOR II',
+    subtitle: 'The Sith Lords',
+    rules: k2Json as unknown as Rules,
+    maxLevel: 50,
+    defaultPlanLevel: 30, // about where a normal playthrough ends without grinding
+    storyFeats: [206], // War Veteran
+    storyHp: 25,
+    forceAbilities: ['wis'],
+    noForceAtLevel1: true,
+    skillPoints: (cls, level, intMod) => Math.max(1, cls.skillPointBase + intMod) * (level === 1 ? 4 : 1),
+    secondClass: 'prestige',
+    secondClassRequired: false,
+    secondClassMinLevel: 16,
+    secondClassDefaultLevel: 16,
+    chaReducesOppositeCost: true,
+    classCodes: ['jgd', 'jcn', 'jsn', 'jwm', 'jma', 'jwa', 'sma', 'sld', 'sas'],
+    iconDir: 'icons',
+  },
+  k1: {
+    id: 'k1',
+    title: 'KOTOR I',
+    subtitle: 'Knights of the Old Republic',
+    rules: k1Json as unknown as Rules,
+    maxLevel: 20,
+    defaultPlanLevel: 20,
+    storyFeats: [],
+    storyHp: 0,
+    forceAbilities: ['wis', 'cha'],
+    noForceAtLevel1: false,
+    skillPoints: (cls, level, intMod) => {
+      const base = cls.skillPointBase / 2
+      return level === 1 ? Math.max(4, (base + intMod) * 4) : Math.max(1, base + Math.floor(intMod / 2))
+    },
+    secondClass: 'jedi',
+    secondClassRequired: true,
+    secondClassMinLevel: 2,
+    secondClassDefaultLevel: 8, // a typical level on reaching Dantooine
+    chaReducesOppositeCost: false,
+    classCodes: ['sol', 'sct', 'scd', 'jgd', 'jcn', 'jsn'],
+    iconDir: 'icons-k1',
+  },
+}
+
+/** Lookup tables for one game, built once. */
+function gameData(g: GameProfile) {
+  return {
+    classById: Object.fromEntries(g.rules.classes.map((c) => [c.id, c])) as Record<string, ClassDef>,
+    featById: new Map(g.rules.feats.map((f) => [f.id, f])),
+    powerById: new Map(g.rules.powers.map((p) => [p.id, p])),
+  }
+}
+const DATA = { k1: gameData(GAMES.k1), k2: gameData(GAMES.k2) }
+export const dataFor = (id: GameId) => DATA[id]
+
+// The active game. These are live bindings: setGame() reassigns them, and every
+// module that imports them sees the new values. The app shows one build at a
+// time and calls setGame(build.game) before rendering it; simulate() does the
+// same, so engine code always runs against the build's own game.
+export let game: GameProfile = GAMES.k2
+export let rules: Rules = game.rules
+export let classById = DATA.k2.classById
+export let featById = DATA.k2.featById
+export let powerById = DATA.k2.powerById
+export let BASE_CLASSES: ClassDef[] = []
+export let SECOND_CLASSES: ClassDef[] = [] // prestige (KOTOR II) or Jedi (KOTOR I) classes
+export let MAX_LEVEL = 50
+export let EXILE_FEATS: number[] = [] // the main character's story feats
+
+export function setGame(id: GameId) {
+  game = GAMES[id]
+  rules = game.rules
+  ;({ classById, featById, powerById } = DATA[id])
+  BASE_CLASSES = rules.classes.filter((c) => !c.prestige && !c.jedi)
+  SECOND_CLASSES = rules.classes.filter((c) => c.prestige || c.jedi)
+  MAX_LEVEL = game.maxLevel
+  EXILE_FEATS = game.storyFeats
+}
+setGame('k2')
+
+export const POINT_BUY = 30
 export const pointCost = (score: number) => {
   // 1 point per step up to 14, 2 for 15-16, 3 for 17-18
   let cost = 0
@@ -110,10 +210,11 @@ export interface LevelChoice {
 }
 
 export interface Build {
+  game: GameId
   name: string
   base: string
-  prestige: string | null
-  prestigeAt: number
+  prestige: string | null // second class: prestige (KOTOR II) or Jedi (KOTOR I)
+  prestigeAt: number // level the second class starts
   alignment: number // 0 = dark, 100 = light
   attrs: Record<Attr, number>
   levels: LevelChoice[] // index 0 = level 1
@@ -121,15 +222,18 @@ export interface Build {
 
 export const emptyLevel = (): LevelChoice => ({ feats: [], powers: [], skills: rules.skills.map(() => 0) })
 
-export function newBuild(base = 'jgd'): Build {
+export function newBuild(id: GameId = game.id, base?: string): Build {
+  const g = GAMES[id]
+  const classes = g.rules.classes
   return {
+    game: id,
     name: '',
-    base,
-    prestige: null,
-    prestigeAt: PRESTIGE_MIN_LEVEL,
+    base: base ?? classes.find((c) => !c.prestige && !c.jedi)!.id,
+    prestige: g.secondClassRequired ? classes.find((c) => c.jedi)!.id : null,
+    prestigeAt: g.secondClassDefaultLevel,
     alignment: 50,
     attrs: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 },
-    levels: Array.from({ length: DEFAULT_PLAN_LEVEL }, emptyLevel),
+    levels: Array.from({ length: g.defaultPlanLevel }, () => ({ feats: [], powers: [], skills: g.rules.skills.map(() => 0) })),
   }
 }
 
@@ -178,6 +282,9 @@ const TOUGHNESS = [84, 124] // each gives +1 vitality per level, retroactive (Im
 // "Class Skill: X" feats make a cross-class skill cost 1 point per rank.
 const CLASS_SKILL_FEATS: Record<number, number> = { 184: 0, 185: 1, 186: 5, 187: 6, 188: 2, 189: 7 }
 
+const FORCE_SENSITIVE = 116 // +40 Force points (both games; granted at Jedi level 1 or 2)
+const FORCE_SENSITIVE_FP = 40
+
 const tierOf = (tiers: number[], owned: Set<number>) => tiers.reduce((t, id, i) => (owned.has(id) ? i + 1 : t), 0)
 
 /** Bonus to each skill from owned feats (needs >= 1 rank where the feat says so). */
@@ -200,6 +307,7 @@ export const rankCap = (isClass: boolean, level: number) => (isClass ? level + 3
 
 /** Walks the build level by level, applying choices and validating them against the rules. */
 export function simulate(b: Build): LevelState[] {
+  if (b.game !== game.id) setGame(b.game)
   const out: LevelState[] = []
   const classLevels: Record<string, number> = {}
   const attrs = { ...b.attrs }
@@ -211,6 +319,7 @@ export function simulate(b: Build): LevelState[] {
   const ranks = rules.skills.map(() => 0)
   let hitDice = 0
   let forceDice = 0
+  let forceLevels = 0 // levels that grant Force points
   let bank = 0
 
   b.levels.forEach((choice, i) => {
@@ -254,7 +363,7 @@ export function simulate(b: Build): LevelState[] {
       powerSource.set(id, level)
     }
 
-    const powerPicks = level === 1 ? 0 : (cls.powerPicks[classLevel - 1] ?? 0)
+    const powerPicks = level === 1 && game.noForceAtLevel1 ? 0 : (cls.powerPicks[classLevel - 1] ?? 0)
     if (choice.powers.length > powerPicks) issues.push(`Too many powers (${choice.powers.length}/${powerPicks})`)
     for (const id of choice.powers) {
       const name = powerById.get(id)?.name
@@ -268,7 +377,7 @@ export function simulate(b: Build): LevelState[] {
       powerSource.set(id, level)
     }
 
-    const skillPoints = Math.max(1, cls.skillPointBase + mod(attrs.int)) * (level === 1 ? 4 : 1)
+    const skillPoints = game.skillPoints(cls, level, mod(attrs.int))
     let spent = 0
     choice.skills.forEach((pts, s) => {
       if (!pts) return
@@ -284,7 +393,10 @@ export function simulate(b: Build): LevelState[] {
     bank = Math.max(0, skillPoints + carriedIn - spent)
 
     hitDice += cls.hitDie
-    if (level >= FORCE_SENSITIVE_LEVEL) forceDice += cls.forceDie
+    if (cls.forceUser && !(level === 1 && game.noForceAtLevel1)) {
+      forceDice += cls.forceDie
+      forceLevels++
+    }
     const sum = (k: 'bab' | 'fort' | 'ref' | 'will' | 'classDefense') =>
       Object.entries(classLevels).reduce((t, [id, lv]) => t + (classById[id][k][k === 'classDefense' ? lv : lv - 1] ?? 0), 0)
 
@@ -295,8 +407,11 @@ export function simulate(b: Build): LevelState[] {
       level, cls, classLevel, attrs: { ...attrs }, featPicks, powerPicks, skillPoints, skillCarriedIn: carriedIn, skillPointsSpent: spent, skillBanked: bank, granted, grantedPowers,
       ownedFeats: new Set(owned), ownedPowers: new Set(powers), ranks: [...ranks],
       classSkills, skillBonus: featSkillBonus(owned, ranks),
-      hp: hitDice + (mod(attrs.con) + toughness) * level + WAR_VETERAN_HP,
-      fp: level >= FORCE_SENSITIVE_LEVEL ? forceDice + mod(attrs.wis) * (level - 1) + FORCE_SENSITIVE_FP : 0,
+      hp: hitDice + (mod(attrs.con) + toughness) * level + game.storyHp,
+      fp: forceLevels
+        ? forceDice + game.forceAbilities.reduce((t, a) => t + mod(attrs[a]), 0) * forceLevels +
+          (owned.has(FORCE_SENSITIVE) ? FORCE_SENSITIVE_FP : 0)
+        : 0,
       bab: sum('bab'),
       fort: sum('fort') + mod(attrs.con) + saveBonus,
       ref: sum('ref') + mod(attrs.dex) + saveBonus,
@@ -337,7 +452,7 @@ export function powerBlocked(id: number, cls: ClassDef, level: number, owned: Se
 export function powerCost(p: PowerDef, alignment: number, cha = 10) {
   if (p.side === 'universal') return p.cost
   let mult = Math.fround(rules.forceCost[Math.min(10, Math.floor(alignment / 10))][p.side])
-  if (mult > 1) mult = Math.max(1, Math.fround(mult - Math.fround(0.05) * Math.max(0, mod(cha))))
+  if (mult > 1 && game.chaReducesOppositeCost) mult = Math.max(1, Math.fround(mult - Math.fround(0.05) * Math.max(0, mod(cha))))
   return Math.floor(p.cost * mult)
 }
 
@@ -365,10 +480,11 @@ export const prestigeAlignmentOk = (cls: ClassDef, alignment: number) =>
   cls.side === 'light' ? alignment >= 75 : cls.side === 'dark' ? alignment <= 25 : true
 
 // --- Share links ---------------------------------------------------------
-// The whole build travels in the URL after '#b='. Version 3 (current) is packed
+// The whole build travels in the URL after '#b='. Version 4 (current) is packed
 // binary, base64url-encoded:
-//   header: 3, name (varint length + UTF-8), base class, prestige class (0 = none),
-//           prestige level, alignment, 6 attributes, plan length
+//   header: 4, game (0 = KOTOR II, 1 = KOTOR I), name (varint length + UTF-8),
+//           base class, second class (0 = none), its level, alignment,
+//           6 attributes, plan length (class indexes: GameProfile.classCodes)
 //   then one entry per level, stopping after the last level with any choice:
 //     flags  bit0 feats · bit1 powers · bit2 skills listed · bit3 skills same as
 //            the previous level · bits4-6 attribute increase (1-6, 0 = none)
@@ -376,9 +492,10 @@ export const prestigeAlignmentOk = (cls: ClassDef, alignment: number) =>
 //     skills: count, then per skill one byte (skill << 5 | points), points >= 31
 //             continue in a varint (banked points can be spent in bulk)
 // Players repeat skill spending most levels, so bit3 makes that one bit.
-// Versions 1 and 2 were base64 JSON (first byte '['); they still decode.
+// Version 3 is the same without the game byte (KOTOR II only). Versions 1 and 2
+// were base64 JSON (first byte '['). All of them still decode.
 
-const CLASS_CODES = ['jgd', 'jcn', 'jsn', 'jwm', 'jma', 'jwa', 'sma', 'sld', 'sas'] // order is part of the format
+const GAME_CODES: GameId[] = ['k2', 'k1'] // order is part of the format
 const F_FEATS = 1, F_POWERS = 2, F_SKILLS = 4, F_SAME_SKILLS = 8
 
 const toBase64Url = (bytes: Uint8Array) =>
@@ -416,11 +533,13 @@ class ByteReader {
 export function encodeBuild(b: Build): string {
   const w = new ByteWriter()
   const name = new TextEncoder().encode(b.name)
-  w.byte(3)
+  const codes = GAMES[b.game].classCodes
+  w.byte(4)
+  w.byte(GAME_CODES.indexOf(b.game))
   w.varint(name.length)
   name.forEach((x) => w.byte(x))
-  w.byte(CLASS_CODES.indexOf(b.base))
-  w.byte(b.prestige ? CLASS_CODES.indexOf(b.prestige) + 1 : 0)
+  w.byte(codes.indexOf(b.base))
+  w.byte(b.prestige ? codes.indexOf(b.prestige) + 1 : 0)
   w.byte(b.prestigeAt)
   w.byte(b.alignment)
   ATTRS.forEach((a) => w.byte(b.attrs[a]))
@@ -461,19 +580,25 @@ export function decodeBuild(s: string): Build | null {
 
 function decodeBinary(bytes: Uint8Array): Build | null {
   const r = new ByteReader(bytes)
-  if (r.byte() !== 3) return null
+  const version = r.byte()
+  if (version !== 3 && version !== 4) return null
+  const gameId = version === 4 ? GAME_CODES[r.byte()] : 'k2'
+  if (!gameId) return null
+  const g = GAMES[gameId]
+  const codes = g.classCodes
   const name = new TextDecoder().decode(Uint8Array.from({ length: r.varint() }, () => r.byte()))
-  const base = CLASS_CODES[r.byte()]
+  const base = codes[r.byte()]
   const prestigeIdx = r.byte()
-  const prestige = prestigeIdx ? CLASS_CODES[prestigeIdx - 1] : null
-  if (!classById[base] || (prestigeIdx && !prestige)) return null
+  const prestige = prestigeIdx ? codes[prestigeIdx - 1] : null
+  if (!DATA[gameId].classById[base] || (prestigeIdx && !prestige)) return null
   const prestigeAt = r.byte()
   const alignment = r.byte()
   const attrs = Object.fromEntries(ATTRS.map((a) => [a, r.byte()])) as Record<Attr, number>
-  const levels = Array.from({ length: Math.min(MAX_LEVEL, r.byte()) }, emptyLevel)
+  const blank = () => ({ feats: [] as number[], powers: [] as number[], skills: g.rules.skills.map(() => 0) }) as LevelChoice
+  const levels = Array.from({ length: Math.min(g.maxLevel, r.byte()) }, blank)
   for (let i = 0; !r.done; i++) {
     const flags = r.byte()
-    const l = levels[i] ?? emptyLevel() // tolerate entries past the plan length
+    const l = levels[i] ?? blank() // tolerate entries past the plan length
     if (flags & F_FEATS) l.feats = r.ids()
     if (flags & F_POWERS) l.powers = r.ids()
     if (flags & F_SKILLS) {
@@ -486,7 +611,10 @@ function decodeBinary(bytes: Uint8Array): Build | null {
     const attr = (flags >> 4) & 7
     if (attr) l.attr = ATTRS[attr - 1]
   }
-  return { name, base, prestige, prestigeAt: Math.max(PRESTIGE_MIN_LEVEL, prestigeAt), alignment: Math.min(100, alignment), attrs, levels }
+  return {
+    game: gameId, name, base, prestige,
+    prestigeAt: Math.max(g.secondClassMinLevel, prestigeAt), alignment: Math.min(100, alignment), attrs, levels,
+  }
 }
 
 // Versions 1 (every level, every skill) and 2 (sparse levels, skill pairs): base64 JSON.
@@ -494,14 +622,14 @@ type SparseLevel = [number, number[], number[], number[], number] // level index
 
 function decodeJson(text: string): Build | null {
   const d = JSON.parse(text)
-  if (!classById[d[2]] || (d[0] !== 1 && d[0] !== 2)) return null
+  if (!DATA.k2.classById[d[2]] || (d[0] !== 1 && d[0] !== 2)) return null
   let levels: LevelChoice[]
   if (d[0] === 1) {
     levels = d[7].map((l: [number[], number[], number[], number]) => ({
       feats: l[0], powers: l[1], skills: l[2], attr: l[3] >= 0 ? ATTRS[l[3]] : undefined,
     }))
   } else {
-    levels = Array.from({ length: Math.min(MAX_LEVEL, d[7]) }, emptyLevel)
+    levels = Array.from({ length: Math.min(GAMES.k2.maxLevel, d[7]) }, () => ({ feats: [], powers: [], skills: GAMES.k2.rules.skills.map(() => 0) }))
     for (const [i, feats, powers, pairs, attr] of d[8] as SparseLevel[]) {
       if (!levels[i]) continue
       for (let k = 0; k < pairs.length; k += 2) levels[i].skills[pairs[k]] = pairs[k + 1]
@@ -509,7 +637,7 @@ function decodeJson(text: string): Build | null {
     }
   }
   return {
-    name: d[1], base: d[2], prestige: d[3] || null, prestigeAt: Math.max(PRESTIGE_MIN_LEVEL, d[4]), alignment: d[5],
+    game: 'k2', name: d[1], base: d[2], prestige: d[3] || null, prestigeAt: Math.max(GAMES.k2.secondClassMinLevel, d[4]), alignment: d[5],
     attrs: Object.fromEntries(ATTRS.map((a, i) => [a, d[6][i]])) as Record<Attr, number>,
     levels,
   }
