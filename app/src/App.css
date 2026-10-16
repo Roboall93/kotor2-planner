@@ -14,6 +14,8 @@
   --brass-1: #3d2c16;
   --brass-2: #8a6a3a;
   --brass-3: #c9a46a;
+  --brass-mid: #6b4f27;
+  --frame-rim: #120c05;
   --light: #6ec6ff;
   --dark: #e0503f;
   --ok: #5fe0c8;
@@ -68,9 +70,9 @@ select { width: 100%; }
   border: 10px solid transparent;
   background:
     linear-gradient(var(--bg), var(--bg)) padding-box,
-    linear-gradient(135deg, var(--brass-3) 0%, var(--brass-2) 12%, #6b4f27 30%, var(--brass-3) 50%, #6b4f27 70%, var(--brass-2) 88%, var(--brass-3) 100%) border-box;
+    linear-gradient(135deg, var(--brass-3) 0%, var(--brass-2) 12%, var(--brass-mid) 30%, var(--brass-3) 50%, var(--brass-mid) 70%, var(--brass-2) 88%, var(--brass-3) 100%) border-box;
   /* outer dark rim + inner dark bevel line, as on the game's panel frames */
-  box-shadow: 0 0 0 2px #120c05, inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(var(--frame-hl-rgb), 0.35), 0 12px 40px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 0 0 2px var(--frame-rim), inset 0 0 0 2px var(--frame-rim), inset 0 0 0 3px rgba(var(--frame-hl-rgb), 0.35), 0 12px 40px rgba(0, 0, 0, 0.7);
 }
 @media (max-width: 720px) { body { padding: 0; } .app { border-width: 5px; border-radius: 0; padding: 12px; } }
 
@@ -364,33 +366,46 @@ button.pill.todo:hover { border-color: var(--gold); box-shadow: 0 0 8px rgba(var
 .pill.reset-skills { cursor: pointer; padding: 2px 8px; font-size: 11px; }
 .pill.reset-skills.warn { color: var(--dark); border-color: var(--dark); }
 
-/* KOTOR I: the original game's blue interface (navy panels, bright blue
-   outlines, white text, yellow names) in a gunmetal frame. */
+/* KOTOR I: the original game's interface, matched to in-game screenshots
+   (character sheet, feats, quest log): saturated royal-navy panels, bright azure
+   text and outlines, yellow for headings and the selected item, in a neutral
+   brushed-gunmetal frame. */
 :root[data-game="k1"] {
-  --bg: #04070f;
-  --panel: #081226;
-  --panel-2: #0c1b38;
-  --line: #24508f;
-  --line-bright: #3f8fe6;
-  --text: #d4e6ff;
-  --muted: #7d9ac2;
-  --accent: #6cc3ff;
-  --accent-ink: #02101f;
-  --gold: #f0cf3a;
-  --brass-1: #1b2430;
-  --brass-2: #56687d;
-  --brass-3: #a9bccf;
-  --ok: #6cc3ff;
-  --glow-rgb: 108, 195, 255;
-  --line-rgb: 36, 80, 143;
-  --line-bright-rgb: 63, 143, 230;
-  --text-rgb: 212, 230, 255;
-  --frame-hl-rgb: 169, 188, 207;
-  --gold-rgb: 240, 207, 58;
+  --bg: #05070a;
+  --panel: #061a3d;
+  --panel-2: #0a2552;
+  --line: #1d5fa8;
+  --line-bright: #22a7ff;
+  --text: #45b8ff;
+  --muted: #3a8ad6;
+  --accent: #5ccaff;
+  --accent-ink: #021430;
+  --gold: #f2d43b;
+  --brass-1: #1c1f22;
+  --brass-2: #50565c;
+  --brass-3: #9aa1a8;
+  --brass-mid: #33373c;
+  --frame-rim: #0b0c0e;
+  --ok: #5ccaff;
+  --glow-rgb: 34, 167, 255;
+  --line-rgb: 29, 95, 168;
+  --line-bright-rgb: 34, 167, 255;
+  --text-rgb: 69, 184, 255;
+  --frame-hl-rgb: 154, 161, 168;
+  --gold-rgb: 242, 212, 59;
 }
+/* Yellow marks names, headings and whatever is selected, as in the game */
 :root[data-game="k1"] .top-actions .name,
-:root[data-game="k1"] .stage-head h3 { color: var(--gold); }
-:root[data-game="k1"] .card h2, :root[data-game="k1"] .col-title { color: var(--text); }
+:root[data-game="k1"] .stage-head h3,
+:root[data-game="k1"] .card h2,
+:root[data-game="k1"] .col-title { color: var(--gold); }
+:root[data-game="k1"] .seg button.on,
+:root[data-game="k1"] .tabs button.on,
+:root[data-game="k1"] .game-switch button.on,
+:root[data-game="k1"] .builds-panel li.active .open-build {
+  color: var(--gold); border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 10px rgba(var(--gold-rgb), 0.2) inset;
+}
+:root[data-game="k1"] .builds-panel li.active .open-build b { color: var(--gold); }
 
 /* Game switcher */
 .title-block { display: flex; flex-direction: column; gap: 4px; }
