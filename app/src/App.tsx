@@ -117,6 +117,19 @@ function BuildsMenu({ activeId, onOpen, onNew, onDuplicate, onDelete }: {
   )
 }
 
+/** Level picker. A dropdown rather than a number box: phones show a native picker,
+ *  and only valid levels can be chosen. A number box corrected every keystroke,
+ *  so typing "30" passed through "3" and cut the plan, losing choices. */
+function LevelSelect({ label, min, max, value, onChange }: {
+  label: string; min: number; max: number; value: number; onChange: (n: number) => void
+}) {
+  return (
+    <select className="level-select" aria-label={label} value={value} onChange={(e) => onChange(+e.target.value)}>
+      {Array.from({ length: Math.max(0, max - min + 1) }, (_, i) => min + i).map((n) => <option key={n} value={n}>{n}</option>)}
+    </select>
+  )
+}
+
 const TIP_DELAY_MS = 1000
 
 function HoverCard({ alignment, state }: { alignment: number; state: LevelState }) {
@@ -408,11 +421,9 @@ export default function App() {
               {build.prestige && (
                 <label className="inline">
                   First prestige level
-                  <input
-                    type="number" min={game.secondClassMinLevel} max={build.levels.length} value={build.prestigeAt}
-                    onChange={(e) => update((b) => {
-                      b.prestigeAt = Math.max(game.secondClassMinLevel, Math.min(b.levels.length, +e.target.value || game.secondClassMinLevel))
-                    }, { reflow: true })}
+                  <LevelSelect
+                    label="First prestige level" min={game.secondClassMinLevel} max={build.levels.length} value={build.prestigeAt}
+                    onChange={(n) => update((b) => { b.prestigeAt = n }, { reflow: true })}
                   />
                 </label>
               )}
@@ -441,11 +452,9 @@ export default function App() {
               </div>
               <label className="inline">
                 Becomes a Jedi at level
-                <input
-                  type="number" min={game.secondClassMinLevel} max={game.secondClassMaxLevel} value={build.prestigeAt}
-                  onChange={(e) => update((b) => {
-                    b.prestigeAt = Math.max(game.secondClassMinLevel, Math.min(game.secondClassMaxLevel, +e.target.value || game.secondClassDefaultLevel))
-                  }, { reflow: true })}
+                <LevelSelect
+                  label="Becomes a Jedi at level" min={game.secondClassMinLevel} max={game.secondClassMaxLevel} value={build.prestigeAt}
+                  onChange={(n) => update((b) => { b.prestigeAt = n }, { reflow: true })}
                 />
               </label>
               {build.prestigeAt > build.levels.length && <p className="note">Training comes after the end of this plan.</p>}
@@ -464,10 +473,7 @@ export default function App() {
 
           <div className="card">
             <h2>Plan to level</h2>
-            <input
-              type="number" min={1} max={MAX_LEVEL} value={build.levels.length}
-              onChange={(e) => setLevelCount(Math.max(1, Math.min(MAX_LEVEL, +e.target.value || 1)))}
-            />
+            <LevelSelect label="Plan to level" min={1} max={MAX_LEVEL} value={build.levels.length} onChange={setLevelCount} />
           </div>
         </section>
 

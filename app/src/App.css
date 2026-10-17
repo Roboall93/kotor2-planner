@@ -412,3 +412,5 @@ button.pill.todo:hover { border-color: var(--gold); box-shadow: 0 0 8px rgba(var
 .game-switch { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; width: fit-content; }
 .game-switch button { border: 0; background: none; padding: 2px 12px; font-size: 12px; color: var(--muted); }
 .game-switch button.on { background: var(--panel-2); color: var(--accent); box-shadow: 0 0 0 1px var(--line-bright); font-weight: 700; }
+
+.level-select { width: auto; min-width: 72px; }
