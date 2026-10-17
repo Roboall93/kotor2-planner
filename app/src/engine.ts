@@ -109,6 +109,9 @@ export interface GameProfile {
   secondClassMaxLevel: number
   secondClassDefaultLevel: number
   chaReducesOppositeCost: boolean // StrategyWiki documents this for KOTOR II only
+  // A class skill of any class you've taken stays a class skill (KOTOR I: your
+  // starting class's skills stay class skills after Jedi training).
+  retainClassSkills: boolean
   classCodes: string[] // share-link class order; part of the link format
   iconDir: string
 }
@@ -132,6 +135,7 @@ export const GAMES: Record<GameId, GameProfile> = {
     secondClassMaxLevel: 50,
     secondClassDefaultLevel: 16,
     chaReducesOppositeCost: true,
+    retainClassSkills: false, // not confirmed for prestige classes
     classCodes: ['jgd', 'jcn', 'jsn', 'jwm', 'jma', 'jwa', 'sma', 'sld', 'sas'],
     iconDir: 'icons',
   },
@@ -158,6 +162,7 @@ export const GAMES: Record<GameId, GameProfile> = {
     secondClassMaxLevel: 10,
     secondClassDefaultLevel: 9,
     chaReducesOppositeCost: false,
+    retainClassSkills: true,
     classCodes: ['sol', 'sct', 'scd', 'jgd', 'jcn', 'jsn'],
     iconDir: 'icons-k1',
   },
@@ -302,10 +307,11 @@ export function featSkillBonus(owned: Set<number>, ranks: number[]): number[] {
   return bonus
 }
 
-/** Which skills count as class skills at a level: the class's own, plus any
+/** Which skills count as class skills at a level: those of the given classes (the
+ *  current one, or every class taken so far where the game keeps them), plus any
  *  Class Skill feat owned before that level (the game asks for skills before feats). */
-export const classSkillsFor = (cls: ClassDef, ownedBefore: Set<number>) =>
-  rules.skills.map((sk) => cls.classSkills.includes(sk.id) ||
+export const classSkillsFor = (classes: ClassDef[], ownedBefore: Set<number>) =>
+  rules.skills.map((sk) => classes.some((c) => c.classSkills.includes(sk.id)) ||
     Object.entries(CLASS_SKILL_FEATS).some(([feat, skill]) => skill === sk.id && ownedBefore.has(+feat)))
 
 export const rankCap = (isClass: boolean, level: number) => (isClass ? level + 3 : Math.floor((level + 3) / 2))
@@ -346,7 +352,7 @@ export function simulate(b: Build): LevelState[] {
     const granted = grantedNow.filter((f) => !owned.has(f.id)).map((f) => f.id)
     granted.forEach((f) => { owned.add(f); featSource.set(f, `granted at level ${level}`) })
 
-    const classSkills = classSkillsFor(cls, owned)
+    const classSkills = classSkillsFor(game.retainClassSkills ? Object.keys(classLevels).map((id) => classById[id]) : [cls], owned)
     const featPicks = cls.featPicks[classLevel - 1] ?? 0
     if (choice.feats.length > featPicks) issues.push(`Too many feats (${choice.feats.length}/${featPicks})`)
     for (const id of choice.feats) {
