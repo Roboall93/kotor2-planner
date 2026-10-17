@@ -152,10 +152,10 @@ export const GAMES: Record<GameId, GameProfile> = {
     },
     secondClass: 'jedi',
     secondClassRequired: true,
-    // Taris caps you at level 8 and training gives a Jedi level, so the first Jedi
-    // level is the 9th at the latest (earlier if you reach Dantooine under-levelled).
+    // Taris usually tops out at level 8 (9 at most) and training gives a Jedi level,
+    // so the first Jedi level is usually the 9th and the 10th at the latest.
     secondClassMinLevel: 2,
-    secondClassMaxLevel: 9,
+    secondClassMaxLevel: 10,
     secondClassDefaultLevel: 9,
     chaReducesOppositeCost: false,
     classCodes: ['sol', 'sct', 'scd', 'jgd', 'jcn', 'jsn'],

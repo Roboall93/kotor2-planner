@@ -448,11 +448,7 @@ export default function App() {
                   }, { reflow: true })}
                 />
               </label>
-              <p className="note">
-                {build.prestigeAt > build.levels.length
-                  ? 'Training comes after the end of this plan.'
-                  : `Taris caps you at level ${game.secondClassMaxLevel - 1}, so training is level ${game.secondClassMaxLevel} at the latest.`}
-              </p>
+              {build.prestigeAt > build.levels.length && <p className="note">Training comes after the end of this plan.</p>}
             </div>
           )}
 

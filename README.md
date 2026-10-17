@@ -41,8 +41,8 @@ Soldier 2 character sheet:
 - Skill points: classes.2da lists double the real base. Creation (base/2 + INT mod) × 4, minimum 4;
   each level-up base/2 + half the INT mod rounded down, minimum 1 (matches the KOTOR wiki's table)
 - Force powers from the first Jedi level (classpowergain.2da); attack bonus per class (CLS_ATK_1/2)
-- Every character starts as Soldier/Scout/Scoundrel and becomes a Jedi at training. Taris caps you at level 8, so
-  the first Jedi level is the 9th at the latest (planner default 9)
+- Every character starts as Soldier/Scout/Scoundrel and becomes a Jedi at training. Taris usually tops out at level 8
+  (9 at most), so the first Jedi level is usually the 9th and the 10th at the latest (planner default 9)
 
 Not yet verified for KOTOR I: whether Charisma reduces opposite-alignment Force costs (only applied in KOTOR II),
 and whether the old class can still be levelled after Jedi training (the planner assumes not).
