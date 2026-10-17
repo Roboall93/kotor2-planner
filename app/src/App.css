@@ -367,32 +367,32 @@ button.pill.todo:hover { border-color: var(--gold); box-shadow: 0 0 8px rgba(var
 .pill.reset-skills.warn { color: var(--dark); border-color: var(--dark); }
 
 /* KOTOR I: the original game's interface, matched to in-game screenshots
-   (character sheet, feats, quest log): saturated royal-navy panels, bright azure
-   text and outlines, yellow for headings and the selected item, in a neutral
-   brushed-gunmetal frame. */
+   (character sheet, feats, quest log): royal-navy panels, azure text and outlines,
+   yellow for headings and the selected item, in a neutral brushed-gunmetal frame.
+   Softened slightly from the in-game colours so long text is easier on the eyes. */
 :root[data-game="k1"] {
   --bg: #05070a;
-  --panel: #061a3d;
-  --panel-2: #0a2552;
-  --line: #1d5fa8;
-  --line-bright: #22a7ff;
-  --text: #45b8ff;
-  --muted: #3a8ad6;
-  --accent: #5ccaff;
+  --panel: #0b1a35;
+  --panel-2: #10244a;
+  --line: #2a5c96;
+  --line-bright: #4aa2e6;
+  --text: #6bbcf0;
+  --muted: #5a8fc4;
+  --accent: #7cc8f2;
   --accent-ink: #021430;
-  --gold: #f2d43b;
+  --gold: #e8cf5e;
   --brass-1: #1c1f22;
   --brass-2: #50565c;
   --brass-3: #9aa1a8;
   --brass-mid: #33373c;
   --frame-rim: #0b0c0e;
-  --ok: #5ccaff;
-  --glow-rgb: 34, 167, 255;
-  --line-rgb: 29, 95, 168;
-  --line-bright-rgb: 34, 167, 255;
-  --text-rgb: 69, 184, 255;
+  --ok: #7cc8f2;
+  --glow-rgb: 74, 162, 230;
+  --line-rgb: 42, 92, 150;
+  --line-bright-rgb: 74, 162, 230;
+  --text-rgb: 107, 188, 240;
   --frame-hl-rgb: 154, 161, 168;
-  --gold-rgb: 242, 212, 59;
+  --gold-rgb: 232, 207, 94;
 }
 /* Yellow marks names, headings and whatever is selected, as in the game */
 :root[data-game="k1"] .top-actions .name,
