@@ -4,7 +4,7 @@ import {
   EXILE_FEATS, classById, dcLabel, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
   placePicks, placeSkills, pointCost, removeSkillRank, repeatSkillGains, powerById, powerCost, prestigeAlignmentOk, reflowSkills, rules, setStagePicks, simulate,
   stageGains, stageLevels, stagePicks, stagesOf,
-  type Attr, type Build, type LevelState, type PickKind, type Stage,
+  type Attr, type Build, type ClassDef, type LevelState, type PickKind, type Stage,
 } from './engine'
 import {
   addBuild, ago, describe, importBuild, loadLibrary, readLibrary, removeBuild, saveActive, setActive,
@@ -127,6 +127,16 @@ function LevelSelect({ label, min, max, value, onChange }: {
     <select className="level-select" aria-label={label} value={value} onChange={(e) => onChange(+e.target.value)}>
       {Array.from({ length: Math.max(0, max - min + 1) }, (_, i) => min + i).map((n) => <option key={n} value={n}>{n}</option>)}
     </select>
+  )
+}
+
+/** "10 vitality · 4 Force · 1 skill points per level" for a class. Skill points
+ *  are a level-up's worth before INT (KOTOR I halves its table value). */
+function ClassStats({ cls }: { cls: ClassDef }) {
+  return (
+    <p className="note">
+      {cls.hitDie} vitality · {cls.forceUser ? `${cls.forceDie} Force` : 'no Force'} · {plural(game.skillPoints(cls, 2, 0), 'skill point')} per level
+    </p>
   )
 }
 
@@ -381,10 +391,7 @@ export default function App() {
                 >{c.name.replace('Jedi ', '')}</button>
               ))}
             </div>
-            <p className="note">
-              {classById[build.base].hitDie} vitality · {classById[build.base].forceUser ? `${classById[build.base].forceDie} Force` : 'no Force'} ·{' '}
-              {game.skillPoints(classById[build.base], 2, 0)} skill points per level
-            </p>
+            <ClassStats cls={classById[build.base]} />
           </div>
 
           <div className="card">
@@ -418,6 +425,7 @@ export default function App() {
                   <option key={c.id} value={c.id}>{c.name} ({c.side} side)</option>
                 ))}
               </select>
+              {build.prestige && <ClassStats cls={classById[build.prestige]} />}
               {build.prestige && (
                 <label className="inline">
                   First prestige level
@@ -450,6 +458,7 @@ export default function App() {
                   >{c.name.replace('Jedi ', '')}</button>
                 ))}
               </div>
+              {build.prestige && <ClassStats cls={classById[build.prestige]} />}
               <label className="inline">
                 Becomes a Jedi at level
                 <LevelSelect
