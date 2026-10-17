@@ -70,6 +70,8 @@ Still unverified:
 - Whether WIS increases apply to Force points retroactively
 - Multiclass defense bonus (class bonuses are summed; the feat descriptions say so)
 - Class Skill feats apply from the next level (assumes the level-up screen asks for skills before feats)
+- Base-class skills stay class skills after taking a prestige class (confirmed for KOTOR I's Jedi training;
+  assumed for KOTOR II since both games share the engine)
 - Prestige power grants (Inspire Followers, Crush Opposition, Fury, Force Camouflage) use the class levels in their descriptions;
   StrategyWiki's progression tables put tier III at level 10 but its own power page says 9, as do the descriptions
 - Feat effects (Caution/Gear Head/Empathy, Conditioning, Toughness) follow the in-game descriptions; higher tiers replace lower ones

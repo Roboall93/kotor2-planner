@@ -109,8 +109,9 @@ export interface GameProfile {
   secondClassMaxLevel: number
   secondClassDefaultLevel: number
   chaReducesOppositeCost: boolean // StrategyWiki documents this for KOTOR II only
-  // A class skill of any class you've taken stays a class skill (KOTOR I: your
-  // starting class's skills stay class skills after Jedi training).
+  // A class skill of any class you've taken stays a class skill. KOTOR I: your
+  // starting class's skills stay class skills after Jedi training. KOTOR II is
+  // assumed to do the same for prestige classes (same engine; not yet confirmed).
   retainClassSkills: boolean
   classCodes: string[] // share-link class order; part of the link format
   iconDir: string
@@ -135,7 +136,7 @@ export const GAMES: Record<GameId, GameProfile> = {
     secondClassMaxLevel: 50,
     secondClassDefaultLevel: 16,
     chaReducesOppositeCost: true,
-    retainClassSkills: false, // not confirmed for prestige classes
+    retainClassSkills: true,
     classCodes: ['jgd', 'jcn', 'jsn', 'jwm', 'jma', 'jwa', 'sma', 'sld', 'sas'],
     iconDir: 'icons',
   },
