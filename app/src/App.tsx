@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ATTRS, ATTR_NAMES, BASE_CLASSES, GAMES, MAX_LEVEL, POINT_BUY, SECOND_CLASSES, game, setGame, type GameId,
-  EXILE_FEATS, classById, dcLabel, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
+  EXILE_FEATS, classById, featBlocked, powerBlocked, dcLabel, decodeBuild, emptyLevel, encodeBuild, featById, mod, newBuild,
   placePicks, placeSkills, pointCost, removeSkillRank, repeatSkillGains, powerById, powerCost, prestigeAlignmentOk, reflowSkills, rules, setStagePicks, simulate,
   stageGains, stageLevels, stagePicks, stagesOf,
   type Attr, type Build, type ClassDef, type LevelState, type PickKind, type Stage,
@@ -663,6 +663,127 @@ function StageCard({ stage: st, build, states, update }: { stage: Stage; build: 
   )
 }
 
+interface PickOption { id: number; name: string; icon: string | null; meta?: string; side?: string; group?: string; reason?: string }
+
+/** Searchable feat/power picker with icons. Eligible picks are grouped (powers by
+ *  side); picks the class could take but can't yet are listed greyed with the
+ *  reason. Opens as a dropdown on desktop and a bottom sheet on phones. */
+function PickList({ label, empty, options, unavailable, onPick, tipKind }: {
+  label: string
+  empty: string
+  options: PickOption[]
+  unavailable: PickOption[]
+  onPick: (id: number) => void
+  tipKind: 'f' | 'p'
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [active, setActive] = useState(0)
+  const ref = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listId = `picklist${useId().replace(/:/g, '')}`
+
+  const q = query.trim().toLowerCase()
+  const match = (o: PickOption) => !q || o.name.toLowerCase().includes(q)
+  const shown = options.filter(match)
+  const locked = unavailable.filter(match)
+
+  useEffect(() => {
+    if (!open) return
+    const outside = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', outside)
+    // Only focus the search box where it won't pop up a phone keyboard over the list.
+    if (matchMedia('(pointer: fine)').matches) inputRef.current?.focus()
+    return () => document.removeEventListener('mousedown', outside)
+  }, [open])
+  useEffect(() => {
+    document.getElementById(`${listId}-${shown[active]?.id}`)?.scrollIntoView({ block: 'nearest' })
+  }, [active, listId, shown])
+
+  const close = () => { setOpen(false); setQuery(''); setActive(0) }
+  const pick = (id: number) => { onPick(id); close() }
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, shown.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)) }
+    else if (e.key === 'Enter' && shown[active]) { e.preventDefault(); pick(shown[active].id) }
+    else if (e.key === 'Escape') { e.preventDefault(); close() }
+  }
+
+  // Group headers in display order (powers: light, universal, dark).
+  const groups: { name?: string; items: PickOption[] }[] = []
+  for (const o of shown) {
+    const g = groups[groups.length - 1]
+    if (g && g.name === o.group) g.items.push(o)
+    else groups.push({ name: o.group, items: [o] })
+  }
+
+  return (
+    <div className="picklist" ref={ref}>
+      <button
+        type="button" className="picklist-button" aria-haspopup="listbox" aria-expanded={open}
+        disabled={!options.length && !unavailable.length}
+        onClick={() => (open ? close() : setOpen(true))}
+      >
+        {options.length ? label : empty}<span aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <>
+          <div className="picklist-backdrop" onClick={close} />
+          <div className="picklist-panel">
+            <div className="picklist-head">
+              <input
+                ref={inputRef} type="search" placeholder="Type to filter" value={query}
+                role="combobox" aria-expanded="true" aria-controls={listId} aria-label={label}
+                aria-activedescendant={shown[active] ? `${listId}-${shown[active].id}` : undefined}
+                onChange={(e) => { setQuery(e.target.value); setActive(0) }} onKeyDown={onKey}
+              />
+              <button type="button" className="picklist-close" aria-label="Close" onClick={close}>×</button>
+            </div>
+            <ul className="picklist-list" id={listId} role="listbox" aria-label={label}>
+              {groups.map((g, gi) => (
+                <li key={gi} role="presentation">
+                  {g.name && <div className="picklist-group">{g.name}</div>}
+                  <ul role="presentation">
+                    {g.items.map((o) => {
+                      const i = shown.indexOf(o)
+                      return (
+                        <li
+                          key={o.id} id={`${listId}-${o.id}`} role="option" aria-selected={i === active}
+                          className={`picklist-row ${i === active ? 'active' : ''}`} data-tip={`${tipKind}:${o.id}`}
+                          onMouseEnter={() => setActive(i)} onClick={() => pick(o.id)}
+                        >
+                          <Icon name={o.icon} size={24} />
+                          <span className="picklist-name">{o.name}</span>
+                          {o.meta && <span className={`picklist-meta ${o.side ?? ''}`}>{o.meta}</span>}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </li>
+              ))}
+              {!shown.length && <li className="picklist-empty" role="presentation">{options.length ? 'No matches' : empty}</li>}
+              {locked.length > 0 && (
+                <li role="presentation">
+                  <div className="picklist-group">Not available yet</div>
+                  <ul role="presentation">
+                    {locked.map((o) => (
+                      <li key={o.id} role="option" aria-disabled="true" aria-selected={false} className="picklist-row locked" data-tip={`${tipKind}:${o.id}`}>
+                        <Icon name={o.icon} size={24} />
+                        <span className="picklist-name">{o.name}</span>
+                        <span className="picklist-meta">{o.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              )}
+            </ul>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function StagePicks({ kind, stage: st, build, states, update }: {
   kind: PickKind; stage: Stage; build: Build; states: LevelState[]; update: Updater
 }) {
@@ -679,9 +800,36 @@ function StagePicks({ kind, stage: st, build, states, update }: {
   const before = states[st.start - 2]
   const ownedBefore = before ? (isFeat ? before.ownedFeats : before.ownedPowers) : new Set<number>(isFeat ? EXILE_FEATS : [])
   const all = isFeat ? rules.feats : rules.powers
-  const options = chosen.length >= slots ? [] : all.filter((x) =>
+  const eligible = chosen.length >= slots ? [] : all.filter((x) =>
     !pickedAnywhere.has(x.id) && !ownedBefore?.has(x.id) &&
     placePicks(kind, [...ids, x.id], st, states).unplaced.length === 0)
+
+  // Picks this class could take but not yet in these levels, with the reason.
+  const cls = states[st.start - 1].cls
+  const end = states[st.end - 1]
+  const ownedEnd = isFeat ? end.ownedFeats : end.ownedPowers
+  const eligibleIds = new Set(eligible.map((x) => x.id))
+  const classCanTake = (id: number) => isFeat ? !!featById.get(id)?.classes[cls.id]?.pick : powerById.get(id)?.classes[cls.id] !== undefined
+  const locked = chosen.length >= slots ? [] : all.filter((x) =>
+    classCanTake(x.id) && !eligibleIds.has(x.id) && !pickedAnywhere.has(x.id) && !ownedEnd.has(x.id))
+
+  const SIDE_ORDER = { light: 0, universal: 1, dark: 2 } as const
+  const SIDE_NAME = { light: 'Light side', universal: 'Universal', dark: 'Dark side' } as const
+  const toOption = (x: { id: number; name: string; icon: string | null }): PickOption => {
+    const p = isFeat ? undefined : powerById.get(x.id)
+    return {
+      id: x.id, name: x.name, icon: x.icon,
+      ...(p && { side: p.side, group: SIDE_NAME[p.side], meta: `${p.side === 'universal' ? 'U' : p.side[0].toUpperCase()} · ${powerCost(p, build.alignment, cha)} FP` }),
+    }
+  }
+  const byName = (a: PickOption, b: PickOption) => a.name.localeCompare(b.name)
+  const options = eligible.map(toOption).sort((a, b) =>
+    (a.side ? SIDE_ORDER[a.side as keyof typeof SIDE_ORDER] - SIDE_ORDER[b.side as keyof typeof SIDE_ORDER] : 0) || byName(a, b))
+  const unavailable = locked.map((x) => ({
+    ...toOption(x),
+    group: undefined,
+    reason: (isFeat ? featBlocked(x.id, cls, st.end, ownedEnd) : powerBlocked(x.id, cls, st.end, ownedEnd))?.replace(/^requires/, 'needs') ?? 'no free slot that fits',
+  })).sort(byName)
 
   const label = (id: number) => {
     if (isFeat) return featById.get(id)?.name ?? `#${id}`
@@ -710,12 +858,11 @@ function StagePicks({ kind, stage: st, build, states, update }: {
         </div>
       )}
       {chosen.length < slots && (
-        <select value="" onChange={(e) => e.target.value && set([...ids, +e.target.value])}>
-          <option value="">{options.length ? `Add ${isFeat ? 'a feat' : 'a power'}…` : 'Nothing eligible in these levels'}</option>
-          {[...options].sort((a, b) => a.name.localeCompare(b.name)).map((o) => (
-            <option key={o.id} value={o.id}>{label(o.id)}</option>
-          ))}
-        </select>
+        <PickList
+          label={`Add ${isFeat ? 'a feat' : 'a power'}…`} empty="Nothing eligible in these levels"
+          options={options} unavailable={unavailable} tipKind={isFeat ? 'f' : 'p'}
+          onPick={(id) => set([...ids, id])}
+        />
       )}
     </div>
   )
